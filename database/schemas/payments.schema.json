@@ -1,0 +1,13 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "userId": { "bsonType": "string" },
+    "gateway": { "bsonType": "string" },
+    "externalId": { "bsonType": "null" },
+    "amount": { "bsonType": "number" },
+    "status": { "bsonType": "string" },
+    "pixCpf": { "bsonType": "string" },
+    "createdAt": { "bsonType": "date" }
+  }
+}

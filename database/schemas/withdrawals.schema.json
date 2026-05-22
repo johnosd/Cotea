@@ -1,0 +1,13 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "userId": { "bsonType": "string" },
+    "walletId": { "bsonType": "string" },
+    "pixKeyCpf": { "bsonType": "string" },
+    "amount": { "bsonType": "number" },
+    "status": { "bsonType": "string" },
+    "adminId": { "bsonType": "null" },
+    "createdAt": { "bsonType": "date" }
+  }
+}

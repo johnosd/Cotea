@@ -1,0 +1,29 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "objectId" },
+    "nome": { "bsonType": "string" },
+    "sobrenome": { "bsonType": "string" },
+    "email": { "bsonType": "string" },
+    "image": { "bsonType": "string" },
+    "telefone": { "bsonType": "string" },
+    "username": { "bsonType": "string" },
+    "contaValidada": { "bsonType": "bool" },
+    "createdAt": { "bsonType": "date" },
+    "cpf": { "bsonType": "string" },
+    "endereco": {
+      "bsonType": "object",
+      "properties": {
+        "cep": { "bsonType": "string" },
+        "uf": { "bsonType": "string" },
+        "cidade": { "bsonType": "string" },
+        "bairro": { "bsonType": "string" },
+        "rua": { "bsonType": "string" },
+        "numero": { "bsonType": "string" },
+        "complemento": { "bsonType": "string" }
+      }
+    },
+    "isBlocked": { "bsonType": "bool" },
+    "systemRole": { "bsonType": "string" }
+  }
+}

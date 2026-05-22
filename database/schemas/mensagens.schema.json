@@ -1,0 +1,30 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "objectId" },
+    "grupoId": { "bsonType": "objectId" },
+    "adminId": { "bsonType": "objectId" },
+    "conteudo": { "bsonType": "string" },
+    "destinatarios": {
+      "bsonType": "array",
+      "items": { "bsonType": "string" }
+    },
+    "enviados": {
+      "bsonType": "array",
+      "items": { "bsonType": "string" }
+    },
+    "falha": { "bsonType": "array" },
+    "createdAt": { "bsonType": "date" },
+    "updatedAt": { "bsonType": "date" },
+    "status": { "bsonType": "string" },
+    "tipo": { "bsonType": "string" },
+    "metodoEnvio": { "bsonType": "string" },
+    "payload": {
+      "bsonType": "object",
+      "properties": {
+        "assunto": { "bsonType": "string" },
+        "corpo": { "bsonType": "string" }
+      }
+    }
+  }
+}

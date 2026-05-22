@@ -1,0 +1,9 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "userId": { "bsonType": "string" },
+    "status": { "bsonType": "string" },
+    "createdAt": { "bsonType": "date" }
+  }
+}

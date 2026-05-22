@@ -1,0 +1,22 @@
+{
+  "_id": "ObjectId",
+  "userId": "ObjectId",
+
+  "saldoDisponivel": 0,
+  "saldoCaucao": 0,
+
+  "historico": [
+    {
+      "tipo": "entrada" | "saida",
+      "descricao": "Compra de créditos",
+      "valor": 30,
+      "data": "2025-01-01"
+    }
+  ],
+
+  "travadoParaCobranca": false,
+  "travadoParaRepasse": false,
+
+  "updatedAt": "date",
+  "createdAt": "date"
+}

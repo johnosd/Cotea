@@ -1,0 +1,23 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "objectId" },
+    "grupoId": { "bsonType": "objectId" },
+    "userId": { "bsonType": "objectId" },
+    "papel": { "bsonType": "string" },
+    "status": { "bsonType": "string" },
+    "temCaucao": { "bsonType": "bool" },
+    "aguardandoEnvioAcesso": { "bsonType": "bool" },
+    "fidelidade": {
+      "bsonType": "object",
+      "properties": {
+        "periodoMeses": { "bsonType": "number" },
+        "renovacaoAutomatica": { "bsonType": "bool" },
+        "observacoes": { "bsonType": "string" },
+        "proximaRenovacao": { "bsonType": "null" }
+      }
+    },
+    "dataEntrada": { "bsonType": "date" },
+    "createdAt": { "bsonType": "date" }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "objectId" },
+    "userId": { "bsonType": "objectId" },
+    "titulo": { "bsonType": "string" },
+    "mensagem": { "bsonType": "string" },
+    "tipo": { "bsonType": "string" },
+    "acao": { "bsonType": "string" },
+    "lido": { "bsonType": "bool" },
+    "data": { "bsonType": "date" },
+    "importante": { "bsonType": "bool" },
+    "dataLido": { "bsonType": "date" },
+    "expiraEm": { "bsonType": "null" }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "objectId" },
+    "nome": { "bsonType": "string" },
+    "slug": { "bsonType": "string" },
+    "capa": { "bsonType": "string" },
+    "imageUrl": { "bsonType": "string" },
+    "imageKey": { "bsonType": "string" },
+    "valorTotal": { "bsonType": "number" },
+    "valorPorVaga": { "bsonType": "number" },
+    "descricao": { "bsonType": "string" },
+    "capacidadeTotal": { "bsonType": "number" },
+    "vagasReservadasAdmin": { "bsonType": "number" },
+    "vagasDisponiveis": { "bsonType": "number" },
+    "servicoPreAssinado": { "bsonType": "bool" },
+    "envioAutomaticoAcesso": { "bsonType": "bool" },
+    "filaEsperaAtiva": { "bsonType": "bool" },
+    "necessitaAnalise": { "bsonType": "bool" },
+    "observacoesInternas": { "bsonType": "string" },
+    "subtitulo": { "bsonType": "string" },
+    "acesso": { "bsonType": "string" },
+    "tempoEntrega": { "bsonType": "string" },
+    "confiabilidade": { "bsonType": "string" },
+    "categoria": { "bsonType": "string" },
+    "tipoGrupo": { "bsonType": "string" },
+    "status": { "bsonType": "string" },
+    "statusDetalhado": { "bsonType": "string" },
+    "beneficios": {
+      "bsonType": "array",
+      "items": { "bsonType": "string" }
+    },
+    "fidelidade": {
+      "bsonType": "object",
+      "properties": {
+        "periodoMeses": { "bsonType": "number" },
+        "renovacaoAutomatica": { "bsonType": "bool" },
+        "observacoes": { "bsonType": "string" },
+        "proximaRenovacao": { "bsonType": "null" }
+      }
+    },
+    "regras": {
+      "bsonType": "array",
+      "items": { "bsonType": "string" }
+    },
+    "faq": {
+      "bsonType": "array",
+      "items": {
+        "bsonType": "object",
+        "properties": {
+          "pergunta": { "bsonType": "string" },
+          "resposta": { "bsonType": "string" }
+        }
+      }
+    },
+    "linkOficial": { "bsonType": "string" },
+    "createdAt": { "bsonType": "date" },
+    "updatedAt": { "bsonType": "date" },
+    "adminId": { "bsonType": "objectId" },
+    "adminIdString": { "bsonType": "string" },
+    "adminNome": { "bsonType": "string" },
+    "adminEmail": { "bsonType": "string" },
+    "adminAvatar": { "bsonType": "string" },
+    "admin": {
+      "bsonType": "object",
+      "properties": {
+        "userId": { "bsonType": "objectId" },
+        "nome": { "bsonType": "string" },
+        "email": { "bsonType": "string" },
+        "avatar": { "bsonType": "string" }
+      }
+    },
+    "participantesIds": { "bsonType": "array" }
+  }
+}

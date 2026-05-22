@@ -1,0 +1,14 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "walletId": { "bsonType": "string" },
+    "type": { "bsonType": "string" },
+    "amount": { "bsonType": "number" },
+    "source": { "bsonType": "string" },
+    "referenceId": { "bsonType": ["string", "null"] },
+    "status": { "bsonType": "string" },
+    "createdAt": { "bsonType": "date" },
+    "description": { "bsonType": "string" }
+  }
+}

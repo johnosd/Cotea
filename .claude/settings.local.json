@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(env)",
+      "PowerShell(echo $PROFILE)",
+      "Bash(Test-Path \"C:\\\\Users\\\\johns\\\\.claude\\\\settings.json\")",
+      "Bash(Test-Path \"C:\\\\Users\\\\johns\\\\.claude\\\\settings.local.json\")",
+      "Bash(dir *)",
+      "mcp__mongodb-mcp-server__list-collections",
+      "mcp__mongodb-mcp-server__atlas-list-clusters",
+      "mcp__mongodb-mcp-server__atlas-connect-cluster",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\johns\\\\Documents\\\\Projetos\\\\cotea\" -Recurse -Force)",
+      "Bash(Select-Object -Property FullName)",
+      "Bash(node -e ' *)",
+      "Skill(mongodb:mongodb-natural-language-querying)",
+      "Skill(mongodb:mongodb-natural-language-querying:*)",
+      "PowerShell($settingsPath = \"$env:USERPROFILE\\\\.claude\\\\settings.json\"; if \\(Test-Path $settingsPath\\) { Get-Content $settingsPath } else { \"\\(not found\\)\" })",
+      "PowerShell(if \\(Test-Path \"$env:USERPROFILE\\\\.claude\\\\mcp.json\"\\) { Get-Content \"$env:USERPROFILE\\\\.claude\\\\mcp.json\" } elseif \\(Test-Path \"$env:APPDATA\\\\Claude\\\\claude_desktop_config.json\"\\) { Get-Content \"$env:APPDATA\\\\Claude\\\\claude_desktop_config.json\" } else { \"\\(no MCP config found\\)\" })",
+      "PowerShell($desktopConfig = Get-Content \"$env:APPDATA\\\\Claude\\\\claude_desktop_config.json\" | ConvertFrom-Json; $clientId = $desktopConfig.mcpServers.\"mongodb-mcp-server\".env.MDB_MCP_API_CLIENT_ID; $clientSecret = $desktopConfig.mcpServers.\"mongodb-mcp-server\".env.MDB_MCP_API_CLIENT_SECRET; Write-Output \"ID_LENGTH=$\\($clientId.Length\\) SECRET_LENGTH=$\\($clientSecret.Length\\)\")",
+      "PowerShell($desktopConfig = Get-Content \"$env:APPDATA\\\\Claude\\\\claude_desktop_config.json\" | ConvertFrom-Json; $clientId = $desktopConfig.mcpServers.\"mongodb-mcp-server\".env.MDB_MCP_API_CLIENT_ID; $clientSecret = $desktopConfig.mcpServers.\"mongodb-mcp-server\".env.MDB_MCP_API_CLIENT_SECRET; $mcpConfig = @{ mcpServers = @{ \"mongodb-mcp-server\" = @{ command = \"npx\"; args = @\\(\"-y\", \"@mongodb-js/mongodb-mcp-server@latest\"\\); env = @{ MDB_MCP_API_CLIENT_ID = $clientId; MDB_MCP_API_CLIENT_SECRET = $clientSecret } } } } | ConvertTo-Json -Depth 5; $mcpConfig | Out-File -FilePath \"$env:USERPROFILE\\\\.claude\\\\mcp.json\" -Encoding utf8; Write-Output \"Written successfully\")",
+      "PowerShell($env:MDB_MCP_CONNECTION_STRING | Select-String \"mongodb\" | ForEach-Object { if \\($_\\) { \"connection string está definida\" } else { \"não definida\" } })",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "PowerShell(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(node -e \"console.log\\('node ok'\\); require\\('dotenv'\\).config\\({path:'.env.local'}\\); console.log\\('uri:', process.env.MONGODB_URI ? 'set' : 'missing'\\);\")",
+      "Bash(npm install *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\johns\\\\Documents\\\\Projetos\\\\Cotea\")",
+      "Bash(Test-Path \"c:\\\\Users\\\\johns\\\\Documents\\\\Projetos\\\\Cotea\")"
+    ]
+  }
+}

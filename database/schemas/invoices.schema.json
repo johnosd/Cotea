@@ -1,0 +1,36 @@
+{
+  "bsonType": "object",
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "userId": { "bsonType": "string" },
+    "grupoId": { "bsonType": "string" },
+    "amount": { "bsonType": "number" },
+    "status": { "bsonType": "string" },
+    "description": { "bsonType": "string" },
+    "metadata": {
+      "bsonType": "object",
+      "properties": {
+        "grupoNome": { "bsonType": "string" },
+        "origem": { "bsonType": "string" }
+      }
+    },
+    "createdAt": { "bsonType": "date" },
+    "updatedAt": { "bsonType": "date" },
+    "balanceSnapshot": {
+      "bsonType": "object",
+      "properties": {
+        "balance": { "bsonType": "number" },
+        "available": { "bsonType": "number" },
+        "confirmedCredits": { "bsonType": "number" },
+        "confirmedDebits": { "bsonType": "number" },
+        "blockedDebits": { "bsonType": "number" },
+        "pendingTotal": { "bsonType": "number" },
+        "returnedTotal": { "bsonType": "number" }
+      }
+    },
+    "ledgerId": { "bsonType": "string" },
+    "paidAt": { "bsonType": "date" },
+    "walletId": { "bsonType": "string" },
+    "refundedAt": { "bsonType": "date" }
+  }
+}
