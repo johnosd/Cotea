@@ -28,16 +28,16 @@ Origem: auditoria estática do codebase
 
 ## Endpoints de Teste em Produção
 
-- [ ] **ALTO** — `pages/api/testSendEmail.js`: endpoint de teste exposto em produção, sem auth, e-mail hardcoded — deletar
-- [ ] **ALTO** — `pages/api/wallet/reset.js`: endpoint destrutivo (apaga payments/walletTransactions/withdrawals), sem referências no código — deletar quando não for mais necessário para dev/staging
-- [ ] **OK** — `pages/api/pix/simulated/create.js` e `confirm.js`: apesar do nome, são o gateway de pagamento real usado em `pagamento.js` e `wallet/add.js` — renomear para remover "simulated" do nome seria ideal, mas não é urgente
+- [x] **ALTO** — `pages/api/testSendEmail.js`: deletado — envio de e-mail coberto por `sendVerificationCode.js`, `acessos.js` e `mensagens.js`
+- [x] **ALTO** — `pages/api/wallet/reset.js`: deletado da API; lógica migrada para `scripts/reset-wallet.js` (script local, nunca vira rota HTTP). Uso: `node --env-file=.env.local scripts/reset-wallet.js <userId>`
+- [ ] **BAIXO** — `pages/api/pix/simulated/create.js` e `confirm.js`: apesar do nome, são o gateway de pagamento real — renomear para remover "simulated" requer atualizar `pagamento.js` e `wallet/add.js`
 
 ---
 
 ## God Files / Tamanho Excessivo
 
-- [ ] **ALTO** — `pages/api/grupos/[id].js` (346 linhas): combina GET + PUT + DELETE + 4 funções parser — dividir em handlers separados e módulo utilitário
-- [ ] **ALTO** — `pages/api/grupos/index.js` (323 linhas): combina GET + POST + 6 helpers de validação — mesma solução
+- [x] **ALTO** — `pages/api/grupos/[id].js`: 346 → 195 linhas; lógica extraída em `handleGet`, `handleDelete`, `handleUpdate`; `handler` exportado é dispatcher de ~30 linhas com auth compartilhada entre DELETE e PUT
+- [x] **ALTO** — `pages/api/grupos/index.js`: 323 → 160 linhas; lógica extraída em `handleList` e `handleCreate`; `handler` exportado é dispatcher de ~10 linhas
 - [x] **MÉDIO** — `components/Header.js`: 369 → 107 linhas; `NotificationsDropdown` (115 linhas) e `ProfileMenu` (100 linhas) extraídos como componentes autônomos com próprio estado, refs e efeito de click-outside/ESC
 
 ---
@@ -82,10 +82,10 @@ Origem: auditoria estática do codebase
 
 ## Performance
 
-- [ ] **MÉDIO** — Pipeline de agregação em `pages/api/meus-grupos.js` tem 4 estágios `$lookup` aninhados — documentar intenção de cada estágio; avaliar índices em `membrosGrupo.userId`, `membrosGrupo.grupoId`, `membrosGrupo.papel`
+- [x] **MÉDIO** — Índices documentados e scriptados em `database/setup-indexes.js`: `membrosGrupo` indexado por `{userId,status}`, `{grupoId,status}`, `{grupoId,papel}`, `{grupoId,userId,papel}`; índices adicionados para `wallets`, `walletTransactions`, `invoices`, `rateLimits`, `notificacoesUsuario`, `auditLogs` e `verificationCodes`
 
 ---
 
 ## Progresso Geral
 
-Corrigidos: 19 / 29
+Corrigidos: 24 / 29
