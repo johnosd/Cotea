@@ -51,12 +51,14 @@ export const authOptions = {
 
         if (usuario) {
           token.id = usuario._id;
-          token.contaValidada = usuario.contaValidada || false;
+          token.nome = usuario.nome || user.name || "";
           token.sobrenome = usuario.sobrenome || "";
           token.telefone = usuario.telefone || "";
           token.username = usuario.username || "";
+          token.contaValidada = usuario.contaValidada || false;
           token.systemRole = usuario.systemRole || "user";
           token.isBlocked = usuario.isBlocked || false;
+          if (usuario.image) token.image = usuario.image;
 
           // Cria notificacao de validacao se estiver pendente
           if (!usuario.contaValidada) {
@@ -87,39 +89,40 @@ export const authOptions = {
           token.isBlocked = false;
         }
       } else if (token.email) {
-        // Refresh do token: atualiza campos voláteis do banco para o middleware funcionar corretamente
+        // Refresh periódico (a cada updateAge segundos): sincroniza campos do banco com o token
         const client = await clientPromise;
         const db = client.db(process.env.MONGODB_DB);
         const usuario = await db.collection("users").findOne(
           { email: token.email },
-          { projection: { contaValidada: 1, isBlocked: 1, systemRole: 1 } }
+          { projection: { contaValidada: 1, isBlocked: 1, systemRole: 1, nome: 1, sobrenome: 1, telefone: 1, username: 1, image: 1 } }
         );
         if (usuario) {
           token.contaValidada = usuario.contaValidada || false;
           token.isBlocked = usuario.isBlocked || false;
           token.systemRole = usuario.systemRole || token.systemRole || "user";
+          token.nome = usuario.nome || token.nome || "";
+          token.sobrenome = usuario.sobrenome || token.sobrenome || "";
+          token.telefone = usuario.telefone || token.telefone || "";
+          token.username = usuario.username || token.username || "";
+          if (usuario.image) token.image = usuario.image;
         }
       }
       return token;
     },
 
     async session({ session, token }) {
-      const client = await clientPromise;
-      const db = client.db(process.env.MONGODB_DB);
-      const usuario = await db.collection("users").findOne({ email: token.email });
-
-      session.user.id = usuario?._id || token.id;
-      session.user.name = usuario?.nome || token.name;
-      session.user.email = usuario?.email || token.email;
-      session.user.image = usuario?.image || token.image;
-      session.user.sobrenome = usuario?.sobrenome || "";
-      session.user.telefone = usuario?.telefone || "";
-      session.user.username = usuario?.username || "";
+      // Lê apenas do token JWT — sem query ao banco neste callback
+      session.user.id = token.id;
+      session.user.name = token.nome || token.name;
+      session.user.email = token.email;
+      session.user.image = token.image;
+      session.user.sobrenome = token.sobrenome || "";
+      session.user.telefone = token.telefone || "";
+      session.user.username = token.username || "";
       session.user.newUser = token.newUser || false;
-      session.user.contaValidada = usuario?.contaValidada || false;
-      session.user.systemRole = usuario?.systemRole || token.systemRole || "user";
-      session.user.isBlocked = usuario?.isBlocked ?? token.isBlocked ?? false;
-
+      session.user.contaValidada = token.contaValidada || false;
+      session.user.systemRole = token.systemRole || "user";
+      session.user.isBlocked = token.isBlocked ?? false;
       return session;
     },
   },

@@ -4,37 +4,39 @@ Este documento define regras e fluxos internos da aplicacao de compartilhamento
 ---
 
 ## Usuarios
-1. Admin: Tem acesso a todos sistema de forma irretrita
-2. User: Pode ser membro de grupo e dono de grupo
+  1. Admin: Tem acesso a todos sistema de forma irretrita
+  2. User: Pode ser membro de grupo e dono de grupo
 
-### Estado do Usuarios
-aqui nao obrigamos o usuario fazer todo cadastro log no inicio, o cadastro acaba acontecendo em fases.
-1. usuario autenticado: 
-  acessos: 
-    - listar grupos
-2. usario validado
-  - acessos: 
-    - listar grupos
-    - Tornar membro de grupo (mas na hora do pagamento será solicitado o cpf e restante do cadastro)
-3.user com cadastro completo:  
-  - acessos:
-    - listar grupo
-    - se tornar membro
-    - cancelar participacao de grupo
-    - criar grupos novos
-    - fazer depositos
-    - solicitar saque
-    - pagar faturas
+  ### Estado do Usuarios
+  aqui nao obrigamos o usuario fazer todo cadastro log no inicio, o cadastro acaba acontecendo em fases.
+  1. usuario autenticado: 
+    acessos: 
+      - listar grupos
+  2. usario validado
+    - acessos: 
+      - listar grupos
+      - Tornar membro de grupo (mas na hora do pagamento será solicitado o cpf e restante do cadastro)
+  3. user com cadastro completo:  
+    - acessos:
+      - listar grupo
+      - se tornar membro
+      - cancelar participacao de grupo
+      - criar grupos novos
+      - fazer depositos
+      - solicitar saque
+      - pagar faturas
 
 ## Fluxo criacao de usuarios
-1. usuario entra na plataforma como visitante
-2. efetura cadastro usando conta google
-3. valida cadastro
-4. completa cadastro com cpf e dados bancarios
+  1. usuario entra na plataforma como visitante
+  2. efetura cadastro usando conta google
+  3. valida cadastro
+  4. completa cadastro com cpf e dados bancarios
 
 # Grupos
+
 ## pre-requisitos
     - usuario precisa estar com cadastro completo, ele consegue acessar a pagina e preencher mas na hora de salvar ele será obrigado a completar o cadstro
+
 ## regras
 - Grupos devem ser aprovados pelo admin do sistema antes de ficar liberado
 - O usuario criador do grupo é o admin ele podera gerenciar o grupo:
@@ -43,25 +45,36 @@ aqui nao obrigamos o usuario fazer todo cadastro log no inicio, o cadastro acaba
   - remover membros
   - alter valor do grupo
 
+## Status de grupo
+  1. Aguardando membros:  grupo está em formação. Somente quando todas as vagas estiverem preenchidas é que o administrador irá ativar o grupo e compartilhar o acesso.
+  2. Fila de espera: O grupo já está assinado, mas tem alguém com saída agendada. Ao entrar para fila, você terá que aguardar a data informada no processo de inscrição para receber o acesso. Fica ligado na data que não tem erro.
+
+  3. Assinado com vaga:O grupo já está ativo, e o acesso pode ser liberado imediatamente pelo administrador após a inscrição. Você poderá entrar em contato com ele para agilizar ainda mais o envio após se inscrever.
+
+  Lembrando que, o administrador tem um prazo máximo de até 5 dias corridos após a ativação da inscrição, ou seja, pode variar em cada status. Não se preocupe, caso optar por cancelar a inscrição antes de receber o acesso, você terá seu pagamento estornado integralmente.
+
 ## fluxo criação de grupo
-1. usuario precisa estar no minimo validado
-2. acesso o botao criar grupo
-3. preeche as informações
-4. na hora de criar, validamos se o cadastro está completo, se não estiver, solicita para completar o cadastro
-5. se estiver com cadastro completo o grupo é criado
+  1. usuario precisa estar no minimo validado
+  2. acesso o botao criar grupo
+  3. preeche as informações
+  4. na hora de criar, validamos se o cadastro está completo, se não estiver, solicita para completar o cadastro
+  5. se estiver com cadastro completo o grupo é criado
+  6. o grupo é aprovado pelo admin do sistema que notifica o owner do grupo
+  7. o dono do grupo ativa o grupo para receber membros
+
 
 ## fluxo de alteracao do valor do grupo
-1. usuario dono do grupo acessa o grupo
-2. clica no botão alterar valor do grupo
-3. o valor vai para aprovacao do admin do sistema
-4. se aprovado o valor é atualizado
-5. os membros recebem a notificao de alteracao de valor
-6. as proximas faturas virao com o novo valor
+  1. usuario dono do grupo acessa o grupo
+  2. clica no botão alterar valor do grupo
+  3. o valor vai para aprovacao do admin do sistema
+  4. se aprovado o valor é atualizado
+  5. os membros recebem a notificao de alteracao de valor
+  6. as proximas faturas virao com o novo valor
 
 ## Fluxo de cancelamento de grupo
-1. usuario dono do grupo clica no botao encerrar grupo
-2. tela de exclusao perguntando motivo da exclusao do grupo aparece, ele seleciona o motivo. é também informando sobre o reembolso dos participantes. O reembolso deve ser proporcional aos dias utilizados, então os valores são devolvidos aos participantes e o owner do grupo recebe os valores proporcionais
-3. o grupo é cancelado logicamente
+  1. usuario dono do grupo clica no botao encerrar grupo
+  2. tela de exclusao perguntando motivo da exclusao do grupo aparece, ele seleciona o motivo. é também informando sobre o reembolso dos participantes. O reembolso deve ser proporcional aos dias utilizados, então os valores são devolvidos aos participantes e o owner do grupo recebe os valores proporcionais
+  3. o grupo é cancelado logicamente
 
 # Membership
 define regras para um usuario se tornar membro de um grupo
@@ -70,16 +83,28 @@ define regras para um usuario se tornar membro de um grupo
 ## regras
 
 ## fluxo de membership
-1. usuario validado com sessao ativa seleciona grupo
-2. clica em assinar 
-3. na tela de relacionamento marca o tipo de relacionamento no grupo
-4. na tela de pagamento ele precisa colocar o cpf e dados que tornará ele ter um cadastro completo caso não tenha. 
-5. escolhe forma de pagamento que é por pix ou saldo disponivel na conta
-6. apos o pagamento ele entra no grupo
-7. owner do grupo recebe notificação por email para liberar acesso ao usuario novo
-8. owner do grupo envia dados entrando no grupo clicando no usuario novo e mandando nova mensagem
-9. apos envio da mensagem novo usuario do grupo fica marcado que recebeu os dados
+  1. usuario validado com sessao ativa seleciona grupo
+  2. clica em assinar 
+  3. na tela de relacionamento marca o tipo de relacionamento no grupo
+  4. na tela de pagamento ele precisa colocar o cpf e dados que tornará ele ter um cadastro completo caso não tenha. 
+  5. escolhe forma de pagamento que é por pix ou saldo disponivel na conta
+  6. apos o pagamento ele entra no grupo
+  7. owner do grupo recebe notificação por email para liberar acesso ao usuario novo
+  8. owner do grupo envia dados entrando no grupo clicando no usuario novo e mandando nova mensagem
+  9. apos envio da mensagem novo usuario do grupo fica marcado que recebeu os dados
 
 
 
+# Payments
 
+## Adicionar Saldo
+  1. usuario com sessao ativa e castro completo
+  2. acessar a opção Minha Carteria no menu lateral;
+  3. Clique em Adicionar;
+  4. Preencha o valor (mínimo R$5) e a forma de pagamento. 
+  5. Assim que o pagamento for realizado e confirmado, os créditos estarão disponíveis em sua conta para pagar suas assinaturas.
+  6. O prazo de confirmação do pagamento varia conforme a forma de pagamento escolhida:
+  - Cartão de crédito/Pix: até 10 minutos - geralmente imediato
+
+## Retirar Saldo
+  1. usuario com sessao ativa e castro completo

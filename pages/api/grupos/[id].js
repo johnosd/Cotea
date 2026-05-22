@@ -3,87 +3,18 @@ import { ObjectId, Int32, Double } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
 import { deleteFromR2, hasR2Config } from '../../../lib/r2';
-
-const parseNumero = (valor, padrao = 0) => {
-  const numero = Number(valor);
-  if (!Number.isFinite(numero)) return padrao;
-  return numero < 0 ? 0 : numero;
-};
-
-const parseObjectId = (valor) => {
-  if (!valor) return null;
-  if (valor instanceof ObjectId) return valor;
-  if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
-  return null;
-};
-
-const parseLista = (valor) => {
-  if (Array.isArray(valor)) return valor.filter(Boolean).map((item) => (typeof item === 'string' ? item.trim() : item));
-  if (typeof valor === 'string') {
-    return valor
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-};
-
-const parseFaq = (valor) => {
-  if (Array.isArray(valor)) {
-    return valor
-      .map((item) => {
-        if (!item) return null;
-        if (typeof item === 'object' && item.pergunta && item.resposta) return { pergunta: String(item.pergunta), resposta: String(item.resposta) };
-        if (typeof item === 'string') {
-          const [pergunta, resposta] = item.split('|').map((s) => s?.trim());
-          if (pergunta && resposta) return { pergunta, resposta };
-        }
-        return null;
-      })
-      .filter(Boolean);
-  }
-
-  if (typeof valor === 'string') {
-    return valor
-      .split(/\r?\n/)
-      .map((linha) => {
-        const [pergunta, resposta] = linha.split('|').map((s) => s?.trim());
-        if (pergunta && resposta) return { pergunta, resposta };
-        return null;
-      })
-      .filter(Boolean);
-  }
-
-  return [];
-};
-
-const parseFidelidade = (body = {}) => {
-  const { fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes, fidelidadeProximaRenovacao } = body;
-  const periodoMatch = String(fidelidadePeriodo || '').match(/\d+/);
-  const periodoMeses = periodoMatch ? Number(periodoMatch[0]) : null;
-  const renovacaoAutomatica = fidelidadeRenovacao !== undefined ? Boolean(fidelidadeRenovacao) : true;
-  const observacoes = (fidelidadeObservacoes || '').trim();
-  const proxima = fidelidadeProximaRenovacao ? new Date(fidelidadeProximaRenovacao) : null;
-  const proximaRenovacao = proxima && !Number.isNaN(proxima.getTime()) ? proxima : null;
-  return { periodoMeses, renovacaoAutomatica, observacoes, proximaRenovacao };
-};
-
-const normalizarPreco = (valor) => {
-  if (valor === undefined || valor === null) return NaN;
-  const str = String(valor).replace(',', '.').trim();
-  const num = Number(str);
-  return Number.isFinite(num) ? num : NaN;
-};
-
-const slugify = (text) =>
-  text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-');
-
-const CATEGORIAS_PERMITIDAS = ['jogos', 'aplicativos', 'assinaturas', 'cursos'];
+import { getSessionUserId } from '../../../lib/wallet';
+import { logAudit } from '../../../lib/audit';
+import {
+  CATEGORIAS_PERMITIDAS,
+  parseNumero,
+  parseObjectId,
+  parseLista,
+  parseFaq,
+  parseFidelidade,
+  normalizarPreco,
+  slugify,
+} from '../../../lib/grupos-utils';
 
 export default async function handler(req, res) {
   const client = await clientPromise;
@@ -162,7 +93,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Nao autenticado' });
   }
 
-  const requesterId = parseObjectId(session.user.id || session.user._id || session.user.sub);
+  const requesterId = parseObjectId(getSessionUserId(session));
   if (!requesterId) {
     return res.status(403).json({ error: 'Usuario da sessao invalido' });
   }
@@ -206,6 +137,16 @@ export default async function handler(req, res) {
           }
         }
       }
+
+      await logAudit({
+        action: 'grupo.deleted',
+        actorId: String(requesterId),
+        actorEmail: session.user.email,
+        targetId: String(grupoId),
+        targetCollection: 'grupos',
+        details: { nome: grupo.nome, categoria: grupo.categoria },
+        ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+      });
 
       return res.status(200).json({ message: 'Grupo excluido com sucesso' });
     } catch (error) {
@@ -286,6 +227,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Categoria invalida' });
   }
 
+  const beneficiosParsed = parseLista(beneficios);
+  const regrasParsed = parseLista(regras);
+  const faqParsed = parseFaq(faq);
+
+  if (beneficiosParsed.length > 30) return res.status(400).json({ error: 'Maximo de 30 beneficios permitidos' });
+  if (beneficiosParsed.some((b) => String(b).length > 200)) return res.status(400).json({ error: 'Cada beneficio deve ter no maximo 200 caracteres' });
+  if (regrasParsed.length > 30) return res.status(400).json({ error: 'Maximo de 30 regras permitidas' });
+  if (regrasParsed.some((r) => String(r).length > 500)) return res.status(400).json({ error: 'Cada regra deve ter no maximo 500 caracteres' });
+  if (faqParsed.length > 20) return res.status(400).json({ error: 'Maximo de 20 itens no FAQ permitidos' });
+
   const imagemFinal = imageUrl || capa || '';
   const vagasDisponiveisNumero =
     typeof vagasDisponiveis === 'number'
@@ -321,10 +272,10 @@ export default async function handler(req, res) {
           filaEsperaAtiva: filaEsperaAtivaEfetiva,
           necessitaAnalise: necessitaAnaliseEfetivo,
           observacoesInternas: observacoesInternasEfetiva,
-          beneficios: parseLista(beneficios),
+          beneficios: beneficiosParsed,
           fidelidade: parseFidelidade({ fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes }),
-          regras: parseLista(regras),
-          faq: parseFaq(faq),
+          regras: regrasParsed,
+          faq: faqParsed,
           linkOficial: (linkOficial || '').trim(),
           updatedAt: new Date(),
         },
@@ -334,6 +285,16 @@ export default async function handler(req, res) {
     if (resultado.matchedCount === 0) {
       return res.status(404).json({ error: 'Grupo nao encontrado' });
     }
+
+    await logAudit({
+      action: 'grupo.updated',
+      actorId: String(requesterId),
+      actorEmail: session.user.email,
+      targetId: String(grupoId),
+      targetCollection: 'grupos',
+      details: { nome, status, categoria: categoriaEfetiva, valorPorVaga: valorPorVagaNumero },
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+    });
 
     return res.status(200).json({ message: 'Grupo atualizado com sucesso' });
   } catch (error) {

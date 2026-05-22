@@ -1,88 +1,19 @@
 import clientPromise from '../../../lib/mongodb';
-import { ObjectId, Int32, Double } from 'mongodb';
+import { Int32, Double } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
-
-const parseNumero = (valor, padrao = 0) => {
-  const numero = Number(valor);
-  if (!Number.isFinite(numero)) return padrao;
-  return numero < 0 ? 0 : numero;
-};
-
-const parseLista = (valor) => {
-  if (Array.isArray(valor)) return valor.filter(Boolean).map((item) => (typeof item === 'string' ? item.trim() : item));
-  if (typeof valor === 'string') {
-    return valor
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-};
-
-const parseFaq = (valor) => {
-  if (Array.isArray(valor)) {
-    return valor
-      .map((item) => {
-        if (!item) return null;
-        if (typeof item === 'object' && item.pergunta && item.resposta) return { pergunta: String(item.pergunta), resposta: String(item.resposta) };
-        if (typeof item === 'string') {
-          const [pergunta, resposta] = item.split('|').map((s) => s?.trim());
-          if (pergunta && resposta) return { pergunta, resposta };
-        }
-        return null;
-      })
-      .filter(Boolean);
-  }
-
-  if (typeof valor === 'string') {
-    return valor
-      .split(/\r?\n/)
-      .map((linha) => {
-        const [pergunta, resposta] = linha.split('|').map((s) => s?.trim());
-        if (pergunta && resposta) return { pergunta, resposta };
-        return null;
-      })
-      .filter(Boolean);
-  }
-
-  return [];
-};
-
-const parseFidelidade = (body = {}) => {
-  const { fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes, fidelidadeProximaRenovacao } = body;
-  const periodoMatch = String(fidelidadePeriodo || '').match(/\d+/);
-  const periodoMeses = periodoMatch ? Number(periodoMatch[0]) : null;
-  const renovacaoAutomatica = fidelidadeRenovacao !== undefined ? Boolean(fidelidadeRenovacao) : true;
-  const observacoes = (fidelidadeObservacoes || '').trim();
-  const proxima = fidelidadeProximaRenovacao ? new Date(fidelidadeProximaRenovacao) : null;
-  const proximaRenovacao = proxima && !Number.isNaN(proxima.getTime()) ? proxima : null;
-  return { periodoMeses, renovacaoAutomatica, observacoes, proximaRenovacao };
-};
-
-const normalizarPreco = (valor) => {
-  if (valor === undefined || valor === null) return NaN;
-  const str = String(valor).replace(',', '.').trim();
-  const num = Number(str);
-  return Number.isFinite(num) ? num : NaN;
-};
-
-const parseObjectId = (valor) => {
-  if (!valor) return null;
-  if (valor instanceof ObjectId) return valor;
-  if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
-  return null;
-};
-
-const slugify = (text) =>
-  text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-');
-
-const CATEGORIAS_PERMITIDAS = ['jogos', 'aplicativos', 'assinaturas', 'cursos'];
+import { getSessionUserId } from '../../../lib/wallet';
+import { logAudit } from '../../../lib/audit';
+import {
+  CATEGORIAS_PERMITIDAS,
+  parseNumero,
+  parseObjectId,
+  parseLista,
+  parseFaq,
+  parseFidelidade,
+  normalizarPreco,
+  slugify,
+} from '../../../lib/grupos-utils';
 
 export default async function handler(req, res) {
   let adminId = null;
@@ -185,7 +116,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Conta nao verificada. Confirme seu e-mail para criar grupos.' });
     }
 
-    adminId = parseObjectId(session.user.id || session.user._id || session.user.sub);
+    adminId = parseObjectId(getSessionUserId(session));
     if (!adminId) {
       return res.status(403).json({ error: 'Usuario da sessao invalido' });
     }
@@ -218,6 +149,16 @@ export default async function handler(req, res) {
     if (!categoria || !CATEGORIAS_PERMITIDAS.includes(categoria)) {
       return res.status(400).json({ error: 'Categoria invalida' });
     }
+
+    const beneficiosParsed = parseLista(beneficios);
+    const regrasParsed = parseLista(regras);
+    const faqParsed = parseFaq(faq);
+
+    if (beneficiosParsed.length > 30) return res.status(400).json({ error: 'Maximo de 30 beneficios permitidos' });
+    if (beneficiosParsed.some((b) => String(b).length > 200)) return res.status(400).json({ error: 'Cada beneficio deve ter no maximo 200 caracteres' });
+    if (regrasParsed.length > 30) return res.status(400).json({ error: 'Maximo de 30 regras permitidas' });
+    if (regrasParsed.some((r) => String(r).length > 500)) return res.status(400).json({ error: 'Cada regra deve ter no maximo 500 caracteres' });
+    if (faqParsed.length > 20) return res.status(400).json({ error: 'Maximo de 20 itens no FAQ permitidos' });
 
     const imagemFinal = imageUrl || capa || '';
     const vagasDisponiveisNumero =
@@ -253,10 +194,10 @@ export default async function handler(req, res) {
       tipoGrupo,
       status,
       statusDetalhado,
-      beneficios: parseLista(beneficios),
+      beneficios: beneficiosParsed,
       fidelidade: parseFidelidade({ fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes }),
-      regras: parseLista(regras),
-      faq: parseFaq(faq),
+      regras: regrasParsed,
+      faq: faqParsed,
       linkOficial: (linkOficial || '').trim(),
       status: status || 'ativo',
       createdAt: new Date(),
@@ -307,6 +248,16 @@ export default async function handler(req, res) {
     };
     await db.collection('membrosGrupo').insertOne(membroAdmin);
 
+    await logAudit({
+      action: 'grupo.created',
+      actorId: String(adminId),
+      actorEmail: session.user.email,
+      targetId: String(resultado.insertedId),
+      targetCollection: 'grupos',
+      details: { nome: novoGrupo.nome, categoria: novoGrupo.categoria, valorPorVaga: valorPorVagaNumero },
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+    });
+
     return res.status(201).json({ _id: resultado.insertedId, ...novoGrupo });
   } catch (error) {
     console.error('Erro na API /api/grupos:', error?.errInfo || error);
@@ -318,6 +269,6 @@ export default async function handler(req, res) {
       console.error('Detalhes schema grupos:', JSON.stringify(detalhes, null, 2));
       return res.status(400).json({ error: 'Validacao do documento falhou', details: detalhes });
     }
-    res.status(500).json({ error: 'Erro interno no servidor' });
+    return res.status(500).json({ error: 'Erro interno no servidor' });
   }
 }

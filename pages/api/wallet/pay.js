@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
 import { insertLedgerEntry } from '../../../lib/mongodb';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
+import { logAudit } from '../../../lib/audit';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -39,6 +40,16 @@ export default async function handler(req, res) {
     });
 
     const updatedBalances = await calculateBalances(wallet._id);
+
+    await logAudit({
+      action: 'wallet.debit',
+      actorId: String(userId),
+      actorEmail: session.user.email,
+      targetId: String(wallet._id),
+      targetCollection: 'wallets',
+      details: { amount, ledgerId: String(ledgerEntry._id), description: description || null },
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+    });
 
     return res.status(201).json({
       walletId: wallet._id,

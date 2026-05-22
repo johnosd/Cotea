@@ -4,12 +4,8 @@ import { getServerSession } from 'next-auth';
 import clientPromise from '../../../../lib/mongodb';
 import { authOptions } from '../../auth/[...nextauth]';
 import { isValidEmail } from '../../../../lib/validation';
-
-const parseObjectId = (valor) => {
-  if (valor instanceof ObjectId) return valor;
-  if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
-  return null;
-};
+import { getSessionUserId } from '../../../../lib/wallet';
+import { parseObjectId } from '../../../../lib/grupos-utils';
 
 const buildTransporter = () =>
   nodemailer.createTransport({
@@ -36,7 +32,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'ID invalido' });
   }
 
-  const adminId = parseObjectId(session.user.id || session.user._id || session.user.sub);
+  const adminId = parseObjectId(getSessionUserId(session));
   if (!adminId) return res.status(403).json({ error: 'Usuario invalido' });
 
   const conteudoBody = (req.body?.conteudo || '').toString().trim();

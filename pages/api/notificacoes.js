@@ -2,10 +2,15 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "./auth/[...nextauth]";
 import clientPromise from "../../lib/mongodb";
 import { ObjectId } from "mongodb";
+import { getSessionUserId } from "../../lib/wallet";
+import { hasRole, isUserBlocked } from "../../lib/authz";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
   if (!session) return res.status(401).json({ message: "Nao autenticado" });
+  if (isUserBlocked(session)) return res.status(403).json({ message: "Conta bloqueada" });
+
+  const sessionUserId = getSessionUserId(session);
 
   if (req.method === "GET") {
     const { userId, lido } = req.query;
@@ -13,8 +18,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "userId invalido" });
     }
 
-    const isAdmin = session.user.systemRole === "admin";
-    if (!isAdmin && String(session.user.id) !== String(userId)) {
+    const isAdmin = hasRole(session, ["admin", "support"]);
+    if (!isAdmin && sessionUserId !== String(userId)) {
       return res.status(403).json({ message: "Acesso negado" });
     }
 
@@ -23,7 +28,7 @@ export default async function handler(req, res) {
       const db = client.db(process.env.MONGODB_DB);
       const filtro = { userId: new ObjectId(userId) };
       if (lido !== undefined) {
-        filtro.lido = lido === "true";
+        filtro.lido = lido === "true" || lido === "1";
       }
       const notificacoes = await db
         .collection("notificacoesUsuario")
@@ -44,8 +49,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "Parametros invalidos" });
     }
 
-    const isAdmin = session.user.systemRole === "admin";
-    if (!isAdmin && String(session.user.id) !== String(userId)) {
+    const isAdmin = hasRole(session, ["admin", "support"]);
+    if (!isAdmin && sessionUserId !== String(userId)) {
       return res.status(403).json({ message: "Acesso negado" });
     }
 
