@@ -38,7 +38,7 @@ Origem: auditoria estática do codebase
 
 - [ ] **ALTO** — `pages/api/grupos/[id].js` (346 linhas): combina GET + PUT + DELETE + 4 funções parser — dividir em handlers separados e módulo utilitário
 - [ ] **ALTO** — `pages/api/grupos/index.js` (323 linhas): combina GET + POST + 6 helpers de validação — mesma solução
-- [ ] **MÉDIO** — `components/Header.js` (369 linhas): acumula navegação, dropdown de notificações, perfil, fetch e event listeners — extrair `NotificationsDropdown` e `ProfileMenu`
+- [x] **MÉDIO** — `components/Header.js`: 369 → 107 linhas; `NotificationsDropdown` (115 linhas) e `ProfileMenu` (100 linhas) extraídos como componentes autônomos com próprio estado, refs e efeito de click-outside/ESC
 
 ---
 
@@ -76,7 +76,7 @@ Origem: auditoria estática do codebase
 
 - [x] **MÉDIO** — `pages/api/atualizarPerfil.js`: `endereco` agora tem limite de tamanho por campo (cep 9, uf 2, cidade/bairro 100, rua 200, numero 20, complemento 100); `nome`/`sobrenome` limitados a 100 chars; `username` a 30 chars com validação de caracteres permitidos; `telefone` a 20 chars
 - [x] **MÉDIO** — `pages/api/grupos/index.js` e `[id].js`: arrays `beneficios` (máx 30 itens, 200 chars/item), `regras` (máx 30, 500 chars) e `faq` (máx 20 itens) agora validados antes de persistir; parse feito uma única vez e reutilizado no documento
-- [ ] **BAIXO** — Mensagens de erro misturam português e inglês entre endpoints — padronizar para português
+- [ ] **BAIXO** — Convenção de chave de resposta inconsistente: arquivos antigos (`atualizarPerfil.js`, `cadastro.js`, `verifyCode.js`, `notificacoes.js`, `sendVerificationCode.js`) usam `{ message: }` para erros; arquivos novos usam `{ error: }`. Padrão correto: `error:` para erros, `message:` para sucesso. Migração requer atualizar frontend junto — `pages/perfil.js`, `pages/verificacao.js`, `pages/cadastro.js` e `pages/notificacoes.js` leem `.message` dessas rotas. Fazer em sprint separado.
 
 ---
 
@@ -88,4 +88,4 @@ Origem: auditoria estática do codebase
 
 ## Progresso Geral
 
-Corrigidos: 18 / 28
+Corrigidos: 19 / 29
