@@ -136,7 +136,7 @@ Pode:
 - **Cadastro inicial**: possui nome, sobrenome, e-mail, username e telefone opcional.
 - **Conta validada**: confirmou e-mail por codigo.
 - **Cadastro financeiro completo**: possui CPF e dados minimos de endereco/pagamento exigidos para operacoes financeiras.
-- **Bloqueado**: `isBlocked: true`; nao deve executar acoes sensiveis.
+- **Bloqueado**: `isBlocked: true`; nao deve executar acoes sensiveis. Pode ser membro de grupos fazer pagamentos, mas não consegue criar grupos e precisa de aprovação para saques
 
 ### Estados de grupo
 
@@ -149,15 +149,13 @@ Atual:
 
 Alvo v2:
 
-- **Rascunho**: criado, ainda nao enviado para aprovacao ou incompleto.
-- **Em aprovacao**: aguardando admin do sistema.
-- **Rejeitado**: nao publicado; dono recebe motivo.
+- **Em aprovacao**: grupo criado aguardando admin do sistema.
+- **Ajustes**: nao publicado; dono recebe motivo para ajustes.
 - **Aguardando membros**: aprovado e publico, mas ainda nao completou vagas quando o acesso depende de completar o grupo.
-- **Aguardando assinatura**: grupo completou, mas dono ainda precisa contratar/confirmar o servico e liberar acessos.
+- **Aguardando assinatura**: grupo completou, mas dono ainda precisa contratar/confirmar o servico e liberar acessos, dono tem 5 dias para enviar acessos.
 - **Assinado com vaga**: ativo, pre-assinado ou com acesso imediato, ainda tem vaga.
 - **Fila de espera**: ativo, sem vaga imediata, mas existe saida agendada.
 - **Ativo completo**: ativo, sem vaga.
-- **Suspenso**: temporariamente oculto/bloqueado por admin, disputa ou risco.
 - **Cancelado**: encerrado logicamente, sem novas entradas.
 
 Gap de implementacao:
@@ -176,14 +174,11 @@ Atual:
 
 Alvo v2:
 
-- **Aguardando pagamento**: intencao criada, fatura pendente.
-- **Pagamento confirmado**: fatura paga, aguardando registro da entrada.
-- **Aguardando acesso**: membro entrou, mas ainda nao recebeu acesso.
+
+- **Aguardando acesso**: Pagamento confirmado. membro entrou, mas ainda nao recebeu acesso.
 - **Ativo**: acesso enviado e participacao vigente.
 - **Cancelamento agendado**: saida marcada para fim de ciclo.
-- **Em disputa**: membro abriu reclamacao.
-- **Cancelado**: saida concluida.
-- **Banido/removido**: removido por admin/dono/suporte por violacao.
+- **Cancelado/removido**: saida concluida ou removido pelo dono do grupo ou admin do sistema/suporte.
 
 ## Fluxo 1: visitante lista e avalia grupos
 
