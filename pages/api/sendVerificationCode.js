@@ -13,17 +13,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ message: "E-mail e obrigatorio." });
   }
 
-  // Limite por email (impede flood sobre uma conta específica)
-  const { allowed: allowedEmail } = await checkRateLimit({
-    key: `sendCode:email:${email.toLowerCase()}`,
-    max: 5,
-    windowMs: 60 * 60 * 1000, // 1 hora
-  });
-  if (!allowedEmail) {
-    return res.status(429).json({ message: "Muitas tentativas para este e-mail. Tente novamente em 1 hora." });
-  }
-
-  // Limite por IP (barreira secundária contra abuso em massa)
+  // Limite por IP primeiro — impede que um IP bloqueado consuma o limite de e-mail da vítima
   const ip = getClientIp(req);
   const { allowed: allowedIp } = await checkRateLimit({
     key: `sendCode:ip:${ip}`,
@@ -32,6 +22,16 @@ export default async function handler(req, res) {
   });
   if (!allowedIp) {
     return res.status(429).json({ message: "Muitas tentativas a partir desta rede. Tente novamente em 1 hora." });
+  }
+
+  // Limite por e-mail — impede flood sobre uma conta específica
+  const { allowed: allowedEmail } = await checkRateLimit({
+    key: `sendCode:email:${email.toLowerCase()}`,
+    max: 5,
+    windowMs: 60 * 60 * 1000, // 1 hora
+  });
+  if (!allowedEmail) {
+    return res.status(429).json({ message: "Muitas tentativas para este e-mail. Tente novamente em 1 hora." });
   }
 
   try {

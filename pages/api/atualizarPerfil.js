@@ -58,7 +58,18 @@ export default async function handler(req, res) {
     return res.status(403).json({ message: "Acesso negado." });
   }
 
+  if (nome.length > 100) return res.status(400).json({ message: "Nome deve ter no maximo 100 caracteres." });
+  if (sobrenome.length > 100) return res.status(400).json({ message: "Sobrenome deve ter no maximo 100 caracteres." });
+  if (telefone && String(telefone).length > 20) return res.status(400).json({ message: "Telefone deve ter no maximo 20 caracteres." });
+
   const usernameLimpo = username.trim().replace(/\s/g, "");
+  if (usernameLimpo.length > 30) return res.status(400).json({ message: "Username deve ter no maximo 30 caracteres." });
+  if (!/^[a-zA-Z0-9._-]+$/.test(usernameLimpo)) return res.status(400).json({ message: "Username deve conter apenas letras, numeros, ponto, hifen ou underscore." });
+
+  const cpfDigitos = String(cpf || "").replace(/\D/g, "");
+  if (cpfDigitos && cpfDigitos.length !== 11) {
+    return res.status(400).json({ message: "CPF deve conter 11 digitos." });
+  }
 
   try {
     const usuarioAtual = await db.collection("users").findOne({ email });
@@ -75,14 +86,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "Nome de usuario ja esta em uso por outro usuario." });
     }
 
+    const str = (v, max) => String(v || "").slice(0, max);
     const enderecoSanitizado = {
-      cep: endereco.cep || "",
-      uf: endereco.uf || "",
-      cidade: endereco.cidade || "",
-      bairro: endereco.bairro || "",
-      rua: endereco.rua || "",
-      numero: endereco.numero || "",
-      complemento: endereco.complemento || "",
+      cep:         str(endereco.cep, 9),
+      uf:          str(endereco.uf, 2),
+      cidade:      str(endereco.cidade, 100),
+      bairro:      str(endereco.bairro, 100),
+      rua:         str(endereco.rua, 200),
+      numero:      str(endereco.numero, 20),
+      complemento: str(endereco.complemento, 100),
     };
 
     await db.collection("users").updateOne(
@@ -94,7 +106,7 @@ export default async function handler(req, res) {
           image: imagem,
           telefone,
           username: usernameLimpo,
-          cpf: encryptCPF(cpf || ""),
+          cpf: encryptCPF(cpfDigitos),
           endereco: enderecoSanitizado,
         },
       }

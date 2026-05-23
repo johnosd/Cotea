@@ -24,7 +24,10 @@
       "Bash(node -e \"console.log\\('node ok'\\); require\\('dotenv'\\).config\\({path:'.env.local'}\\); console.log\\('uri:', process.env.MONGODB_URI ? 'set' : 'missing'\\);\")",
       "Bash(npm install *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\johns\\\\Documents\\\\Projetos\\\\Cotea\")",
-      "Bash(Test-Path \"c:\\\\Users\\\\johns\\\\Documents\\\\Projetos\\\\Cotea\")"
+      "Bash(Test-Path \"c:\\\\Users\\\\johns\\\\Documents\\\\Projetos\\\\Cotea\")",
+      "Bash(Get-ChildItem -Path pages, components, lib -Recurse -File -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Bash(Format-Table -AutoSize)"
     ]
   }
 }

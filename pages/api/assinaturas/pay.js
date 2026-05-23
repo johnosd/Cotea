@@ -4,6 +4,7 @@ import { authOptions } from '../auth/[...nextauth]';
 import { getClient, getDb, insertLedgerEntry } from '../../../lib/mongodb';
 import { INVOICE_STATUS, createInvoice, getInvoiceById, markInvoiceAwaitingTopUp, markInvoicePaid } from '../../../lib/invoices';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
+import { logAudit } from '../../../lib/audit';
 
 const parseObjectId = (valor) => {
   if (valor instanceof ObjectId) return valor;
@@ -117,6 +118,17 @@ export default async function handler(req, res) {
       }
 
       const updatedBalances = await calculateBalances(wallet._id);
+
+      await logAudit({
+        action: 'assinatura.paid',
+        actorId: String(userId),
+        actorEmail: session.user.email,
+        targetId: String(updatedInvoice?._id || invoice._id),
+        targetCollection: 'invoices',
+        details: { grupoId: grupoIdRaw, grupoNome: grupo.nome, amount, ledgerId: String(ledgerEntry._id) },
+        ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+      });
+
       return res.status(200).json({
         invoiceId: updatedInvoice?._id || invoice._id,
         status: INVOICE_STATUS.PAGA,

@@ -3,6 +3,7 @@ import { authOptions } from '../auth/[...nextauth]';
 import { getDb, insertLedgerEntry } from '../../../lib/mongodb';
 import { INVOICE_STATUS, getInvoiceById, markInvoiceRefunded } from '../../../lib/invoices';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
+import { logAudit } from '../../../lib/audit';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -76,11 +77,22 @@ export default async function handler(req, res) {
     }
 
     const balances = await calculateBalances(wallet._id);
+    const refundedAt = new Date();
     const refunded = await markInvoiceRefunded({
       invoiceId,
       walletId: wallet._id,
       ledgerId: creditEntry._id,
-      refundedAt: new Date(),
+      refundedAt,
+    });
+
+    await logAudit({
+      action: 'assinatura.refunded',
+      actorId: String(userId),
+      actorEmail: session.user.email,
+      targetId: invoiceId,
+      targetCollection: 'invoices',
+      details: { amount: valor, ledgerId: String(creditEntry._id), walletId: String(wallet._id) },
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
     });
 
     return res.status(200).json({

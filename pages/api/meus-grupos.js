@@ -1,5 +1,9 @@
 import { ObjectId } from 'mongodb';
+import { getServerSession } from 'next-auth/next';
 import clientPromise from '../../lib/mongodb';
+import { authOptions } from './auth/[...nextauth]';
+import { getSessionUserId } from '../../lib/wallet';
+import { hasRole, isUserBlocked } from '../../lib/authz';
 
 const parseObjectId = (valor) => {
   if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
@@ -12,10 +16,25 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Metodo nao permitido' });
   }
 
+  const session = await getServerSession(req, res, authOptions);
+  if (!session?.user) {
+    return res.status(401).json({ error: 'Nao autenticado' });
+  }
+  if (isUserBlocked(session)) {
+    return res.status(403).json({ error: 'Conta bloqueada' });
+  }
+
   const userIdRaw = Array.isArray(req.query.userId) ? req.query.userId[0] : req.query.userId;
   const userId = parseObjectId(userIdRaw);
   if (!userId) {
     return res.status(400).json({ error: 'userId obrigatorio e deve ser um ObjectId valido' });
+  }
+
+  // Usuários comuns só podem ver seus próprios grupos; admin e support podem ver de qualquer um
+  const sessionUserId = getSessionUserId(session);
+  const isStaff = hasRole(session, ['admin', 'support']);
+  if (!isStaff && sessionUserId !== userIdRaw) {
+    return res.status(403).json({ error: 'Acesso negado' });
   }
 
   try {
