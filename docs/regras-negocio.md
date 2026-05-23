@@ -88,11 +88,13 @@ define regras para um usuario se tornar membro de um grupo
   3. na tela de relacionamento marca o tipo de relacionamento no grupo
   4. na tela de pagamento ele precisa colocar o cpf e dados que tornará ele ter um cadastro completo caso não tenha. 
   5. escolhe forma de pagamento que é por pix ou saldo disponivel na conta
+  6. o usuario paga duas faturas, a do primeiro mes e o caução
   6. apos o pagamento ele entra no grupo
   7. owner do grupo recebe notificação por email para liberar acesso ao usuario novo
   8. owner do grupo envia dados entrando no grupo clicando no usuario novo e mandando nova mensagem
   9. apos envio da mensagem novo usuario do grupo fica marcado que recebeu os dados
 
+## Fluxo canelamento membership
 
 
 # Payments
@@ -108,3 +110,34 @@ define regras para um usuario se tornar membro de um grupo
 
 ## Retirar Saldo
   1. usuario com sessao ativa e castro completo
+
+## credito caucao
+Créditos de assinatura ou (caução) é a forma de inibir a inadimplência antecipando o pagamento da última mensalidade para participar de um grupo. Caso algum pagamento não seja realizado, o valor será utilizado para quita-lo e o usuário terá a participação encerrada. É exigidos pelos administradores de grupos como garantia, mas fica em posse do Kotas e é devolvido pra você no final de sua assinatura.
+
+### Como funciona? 
+Quando você participa de um grupo, você paga a primeira e a última mensalidade de uma vez. Esse valor é usado quando você for cancelar pagando sua última mensalidade, ou estornado pra você se solicitado no prazo (15 dias antes do vencimento de sua fatura). 
+
+Esse mecanismo permite que o administrador se planeje para reposição do membro e não tenha prejuízos com a assinatura. Caso você solicite o cancelamento com menos de 15 dias do vencimento, o sistema pagará sua próxima fatura e você ainda permanecerá no grupo pelo outro mês. 
+
+Exemplo: 
+
+Você quer participar de um serviço em que a mensalidade custa R$ 10,00
+
+Digamos que você entra no grupo dia 01 de janeiro e ele é ativado no mesmo dia.
+
+Seus pagamentos ficam da seguinte maneira: 
+01 de Janeiro	20 reais (10 mensalidade + 10 caução na inscrição)
+01 de Fevereiro	10 reais mensalidade
+01 de Março	10 reais mensalidade
+
+Suas faturas vencem todo dia 01.  Se dia 14 de março você solicitar o cancelamento veja o que acontece: 
+
+01 de Março	10 reais mensalidade
+14 de Março (solicitou cancelamento)	Sistema agenda sua saída para 01 de Abril.
+01 Abril	Você é retirado do grupo e seu pagamento caução de R$10 devolvidos na sua conta do Kotas.
+E se você solicitasse o cancelamento após 15 de março?
+
+01 de Março	10 reais
+16 de Março (solicitou cancelamento)	 Sistema agenda sua saída para 01 Maio.
+01 Abril	Você não paga este mês, seu crédito caução é usado para pagamento.
+01 Maio	Você é retirado do grupo.
