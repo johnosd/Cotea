@@ -89,3 +89,21 @@ Origem: auditoria estática do codebase
 ## Progresso Geral
 
 Corrigidos: 24 / 29
+
+---
+
+## Triagem atual — 2026-10-31
+
+O progresso acima e o retrato da auditoria de 2026-05-22, nao uma contagem
+atualizada. O destino dos itens que estavam `[ ]` foi conferido contra o codigo:
+
+| Item original | Destino | Motivo |
+| --- | --- | --- |
+| Limite de login so por e-mail | Ideia CQ-01 em `.planning/backlog.md` | Ainda ocorre; falta definir politica por IP e comportamento atras de proxy. |
+| Renomear PIX `simulated` como gateway real | Descartado | As rotas geram `SIMULATED-PIX-*` e a confirmacao e acionada pelo cliente; o PIX continua simulado. Gateway real ja consta como possibilidade futura distinta no backlog v2. |
+| JWT desatualizado por ate `SESSION_UPDATE_AGE_SECONDS` apos editar perfil | Descartado como bug; limpeza CQ-03 ad-hoc | `pages/perfil.js` chama `update()` apos salvar; o callback JWT relê `users`. Em sessao JWT, `session.updateAge` e ignorado, deixando a configuracao/comentario enganoso. |
+| Audit log de aprovacao de saque, mudanca de role e bloqueio | Descartados | Os tres handlers ja chamam `logAudit`; os itens estavam marcados `[ ]` apesar de dizerem `OK`. |
+| Erros com `message` em APIs antigas | Ideia CQ-02 em `.planning/backlog.md` | Inconsistencia confirmada; os consumidores atuais dependem de `message`, exigindo migracao conjunta. |
+
+Nenhum dos itens pendentes restantes mostrou um bug reproduzivel para abrir
+`sdd-bugfix`. Itens `[x]` permanecem apenas como historico da auditoria.

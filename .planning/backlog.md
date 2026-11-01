@@ -186,6 +186,29 @@ schemas reais no MongoDB antes de planejar alteracoes de persistencia.
   como possibilidades futuras (`docs/regras-negocio-v2.md:325-327,676-677`),
   nao como features v2 confirmadas; avaliar separadamente quando houver pedido.
 
+### Qualidade de codigo — triagem de `docs/code-quality-checklist.md` (2026-10-31)
+
+- **CQ-01 · Ideia · Limite de login tambem por IP** — Especificar politica de
+  limite por conta e por origem, identificacao confiavel do IP atras de proxy,
+  respostas a bloqueio e verificacao de que nao prejudica usuarios da mesma
+  rede. O callback de login limita apenas por e-mail
+  (`pages/api/auth/[...nextauth].js:32-40`); o projeto ja tem helper de IP e
+  limite para envio de codigo (`lib/ratelimit.js:44-52`,
+  `pages/api/sendVerificationCode.js:16-35`). Encaminhar a `sdd-specify`.
+- **CQ-02 · Ideia · Padronizar erros das APIs** — Especificar contrato unico
+  (`error` para falha, `message` para sucesso) e migracao coordenada dos
+  consumidores antes de alterar respostas. As APIs de perfil, cadastro,
+  verificacao e notificacoes ainda devolvem erros em `message`, lidos por
+  `pages/perfil.js`, `pages/cadastro.js`, `pages/verificacao.js` e
+  `pages/notificacoes.js`. Fonte: `docs/code-quality-checklist.md:79`.
+  Encaminhar a `sdd-specify` por afetar varios contratos de API.
+- **CQ-03 · Ad-hoc · Corrigir configuracao/documentacao de `updateAge`** —
+  Remover ou esclarecer o comentario e a configuracao que sugerem refresh a
+  cada `SESSION_UPDATE_AGE_SECONDS` em `pages/api/auth/[...nextauth].js:7-12,92,129-133`.
+  A sessao usa JWT e o NextAuth ignora `session.updateAge` nessa estrategia;
+  o callback JWT consulta o usuario quando a sessao e acessada. Tratar como
+  limpeza pontual via `sdd-adhoc`, sem mudar a politica de sessao.
+
 
 ## Features
 
