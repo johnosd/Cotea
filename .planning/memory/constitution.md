@@ -1,10 +1,10 @@
 <!--
 Relatório de Impacto de Sincronização
-- Mudança de versão: (nenhuma) -> 1.0.0
-- Princípios modificados: criação inicial
-- Seções adicionadas: Princípios Fundamentais, Restrições do Projeto, Fluxo de Desenvolvimento, Governança
+- Mudança de versão: 1.0.0 -> 1.1.0
+- Princípios modificados: nenhum
+- Seções modificadas: Restrições do Projeto (plataforma definida pela ADR-001; regras de serverless, região e trabalho agendado)
 - Seções removidas: nenhuma
-- Pendências: plataforma de deploy e agendador ainda não decididos (registrar via sdd-adr)
+- Pendências: nenhuma (e-mail transacional segue a ADR-002, sem regra de gate)
 -->
 
 # Constitution do Cotea
@@ -66,8 +66,16 @@ Relatório de Impacto de Sincronização
   por `npm test`.
 - Mensagens de UI e de API em português, consistentes com as existentes; não
   fazer refatorações globais de encoding/acentuação em tarefas pequenas.
-- Plataforma de deploy ainda não definida: recursos de infraestrutura (ex.:
-  agendamento) DEVEM ser agnósticos de plataforma até existir uma ADR.
+- Deploy na **Vercel** (ADR-001), com funções serverless na região `gru1`. Código
+  de servidor DEVE caber no tempo máximo de função do plano: processamento em
+  lote DEVE ter limite por execução e continuar na execução seguinte.
+- Funções e banco DEVEM ficar na mesma região (alvo: São Paulo, ADR-001).
+- Trabalho agendado DEVE ser uma rota HTTP protegida por segredo
+  (`Authorization: Bearer <CRON_SECRET>`), chamada pelo agendador da plataforma
+  (Vercel Schedules); timers dentro do processo (`setInterval`, `node-cron`) NÃO
+  DEVEM ser usados.
+- Decisões de arquitetura ficam em `sdd/adr/`; um plano que as contrarie DEVE
+  propor emenda via `sdd-adr`.
 
 ## Fluxo de Desenvolvimento
 
@@ -93,4 +101,4 @@ redefinição incompatível de um princípio. Uma versão MINOR denota um novo
 princípio ou expansão material da governança. Uma versão PATCH denota
 esclarecimentos, correções ou mudanças de texto não semânticas.
 
-**Versão**: 1.0.0 | **Ratificada**: 2026-11-20 | **Última Emenda**: 2026-11-20
+**Versão**: 1.1.0 | **Ratificada**: 2026-11-20 | **Última Emenda**: 2026-11-20
