@@ -2,7 +2,7 @@
 
 ## Pré-requisitos
 
-- `.env.local` com as variáveis de sempre e **`ROTINAS_SECRET`** (só o nome é
+- `.env.local` com as variáveis de sempre e **`CRON_SECRET`** ou **`ROTINAS_SECRET`** (só o nome é
   documentado; gere um valor longo aleatório localmente).
 - Coleções e índices: `node database/setupDatabase.js` e
   `node --env-file=.env.local database/setup-indexes.js`.

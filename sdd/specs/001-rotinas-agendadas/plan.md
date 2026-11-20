@@ -231,7 +231,7 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | ID | Risco/Decisão | Impacto | Mitigação/Encaminhamento |
 | --- | --- | --- | --- |
-| R-001 | Plataforma de deploy e agendador indefinidos | FR-002 (até 1h) depende de alguém chamar a rota | D-01: rota agnóstica implementada (GET/POST + Bearer). **Encaminhamento (T030)**: abrir `sdd-adr` do agendador antes do deploy (Vercel Cron, GitHub Actions ou cron do sistema), chamando `/api/rotinas/executar` a cada 15 min; até lá, FR-002/SC-001 só são verificáveis disparando manualmente |
+| R-001 | Plataforma de deploy e agendador indefinidos | FR-002 (até 1h) depende de alguém chamar a rota | Resolvido: ADR-001 — Vercel (região `gru1`) com Vercel Schedules chamando `/api/rotinas/executar` a cada 15 min (Hobby: até ~30 min de atraso com jitter; Pro obrigatório antes do primeiro pagamento real, jitter 5). Rota passa a aceitar `CRON_SECRET` (T033) |
 | R-002 | Lease (10 min) expira durante um processamento longo e outra execução assume o item | Efeito duplicado | Lease maior que o timeout serverless típico; `processarItem` idempotente pelo evento (R-006) |
 | R-003 | Contratos usam o repositório em memória; a atomicidade real do Mongo não tem teste automatizado | Divergência fake × Mongo passaria despercebida | Resolvido: quickstart passo 4 no banco de desenvolvimento — 20 sondas, 2 chamadas simultâneas, 10 + 10 processados, 0 duplicatas (2026-11-20) |
 | R-004 | Tempo limite serverless com muitos itens vencidos | Execução cortada no meio | `limite` de 500 itens; itens restantes na próxima execução; item interrompido volta após o lease |
@@ -258,6 +258,7 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | 2026-11-20 | Fase 6 US4 | API e componente de datas extras (suíte 25/25) | Quickstart 10 |
 | 2026-11-20 | Fase 7 Polish (parcial) | Docs (`CLAUDE.md`, `AGENTS.md`, regra de prazos em `.docs/regras-negocio-v2.md`), R-001 encaminhado; suíte 25/25 | Build/lint bloqueados por problemas pré-existentes (R-008); quickstart pendente |
 | 2026-11-20 | Fase 7 Polish | T032 (import `block.js`), build ok, banco configurado, quickstart 1–6 ok; B-07/B-08/B-09 no backlog | Quickstart 7–11 com login do usuário |
+| 2026-11-20 | ADR-001/002 | Plataforma (Vercel gru1), agendador (Schedules 15 min), plano (Hobby→Pro), e-mail (Gmail até o lançamento); constitution 1.1.0; T033 | Quickstart 7–11 |
 
 **PRÓXIMO**: usuário executa quickstart 7–11 no `/admin?tab=rotinas` (login Google, admin e um usuário support); depois marcar T031 e os itens de Fase 5/6 e rodar `sdd-converge`
 

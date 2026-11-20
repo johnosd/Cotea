@@ -212,6 +212,7 @@ description: "Tasks da feature 001-rotinas-agendadas"
 - [X] T030 Registrar no `plan.md` (Riscos) a recomendação de abrir `sdd-adr` para o agendador (R-001) e a frequência de 15 min
 - [ ] T031 Rodar `quickstart.md` inteiro
 - [X] T032 [desvio aprovado, descoberto em T031/gate de build] Corrigir import inexistente em `pages/api/admin/users/[id]/block.js` (`../../auth/` → `../../../auth/[...nextauth]`), que impedia o `npm run build` — bug pré-existente fora do escopo, corrigido por decisão do usuário
+- [X] T033 [ADR-001] Rota `pages/api/rotinas/executar.js` aceita `CRON_SECRET` (padrão da Vercel) com `ROTINAS_SECRET` como alternativa; `vercel.json` com `regions: ["gru1"]` e o schedule `rotinas` (`*/15 * * * *` → `/api/rotinas/executar`); `.tools/start.sh`, `CLAUDE.md`, `AGENTS.md`, `contracts/api-rotinas.md` e `quickstart.md` atualizados. Verificado: `npx vitest run` 25/25, build ok, dev server só com `CRON_SECRET` → 401 sem segredo, 200 com `Bearer CRON_SECRET`
 
 **Registro da Fase** (parcial, 2026-11-20):
 

@@ -33,7 +33,7 @@ Variaveis usadas pelo app:
 - Admin legado/autorizacao: `ADMIN_EMAILS`
 - E-mail: `EMAIL_USER`, `EMAIL_PASS`
 - URL publica: `NEXT_PUBLIC_SITE_URL`
-- Rotinas agendadas: `ROTINAS_SECRET` (segredo Bearer do agendador que chama `/api/rotinas/executar`; sem ele a rota responde 503)
+- Rotinas agendadas: `CRON_SECRET` (segredo Bearer que o Vercel Schedules envia a `/api/rotinas/executar`, ADR-001) ou, como alternativa local, `ROTINAS_SECRET`; sem nenhum dos dois a rota responde 503
 - R2: `CLOUDFLARE_R2_ACCOUNT_ID`, `R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ENDPOINT`, `R2_ENDPOINT`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, `R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, `R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_R2_BUCKET`, `R2_BUCKET_NAME`, `CLOUDFLARE_R2_PUBLIC_BASE_URL`, `R2_PUBLIC_BASE_URL`
 
 ## Estrutura e Padroes

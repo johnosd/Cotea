@@ -404,7 +404,7 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 
 | Slug | Título | Status | Progresso | Última Atualização |
 | --- | --- | --- | --- | --- |
-| 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Em Execução | 39/44 tasks | 2026-11-20 |
+| 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Em Execução | 40/45 tasks | 2026-11-20 |
 
 ## Melhorias Ad-hoc
 

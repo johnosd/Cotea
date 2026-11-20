@@ -82,7 +82,8 @@ R2_PUBLIC_BASE_URL
 R2_ENDPOINT
 SESSION_MAX_AGE_SECONDS     # optional, default 86400
 SESSION_UPDATE_AGE_SECONDS  # optional, default 1800
-ROTINAS_SECRET              # bearer secret for the scheduler calling /api/rotinas/executar (route returns 503 if unset)
+CRON_SECRET                 # bearer secret sent by Vercel Schedules to /api/rotinas/executar (ADR-001)
+ROTINAS_SECRET              # fallback bearer secret for local runs/other schedulers (route returns 503 if neither is set)
 ```
 
 ### Remote image domains

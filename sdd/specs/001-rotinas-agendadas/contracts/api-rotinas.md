@@ -7,11 +7,11 @@ português. IDs de usuário comparados como string.
 
 ### `GET|POST /api/rotinas/executar[?rotina=<id>]`
 
-- **Auth**: header `Authorization: Bearer <ROTINAS_SECRET>`, comparado com
+- **Auth**: header `Authorization: Bearer <segredo>`, onde o segredo é `CRON_SECRET` (injetado pela Vercel, ADR-001) ou, se ausente, `ROTINAS_SECRET`; comparado com
   `crypto.timingSafeEqual` (tamanhos diferentes → 401 sem comparar). Sem sessão.
 - Rota liberada em `PUBLIC_PATHS` do `middleware.js` (senão o middleware
   redireciona o agendador para o login). A proteção é só o segredo.
-- `GET` existe porque a Vercel Cron chama via GET; outros agendadores usam POST.
+- Disparada pelo Vercel Schedules (`vercel.json`, schedule `rotinas`, a cada 15 min, `POST`), conforme ADR-001. `GET` continua aceito para agendadores que só fazem GET.
 - Executa, em sequência, todas as rotinas registradas (ou só `?rotina=`), com
   `origem: 'automatica'`.
 
@@ -21,7 +21,7 @@ português. IDs de usuário comparados como string.
 | 401 | `{ error: 'Nao autorizado' }` (segredo ausente/errado) |
 | 404 | `{ error: 'Rotina nao encontrada' }` (`?rotina=` inválido) |
 | 405 | método diferente de GET/POST |
-| 503 | `{ error: 'Rotinas nao configuradas' }` (`ROTINAS_SECRET` não definido) |
+| 503 | `{ error: 'Rotinas nao configuradas' }` (nem `CRON_SECRET` nem `ROTINAS_SECRET` definidos) |
 
 Nunca logar o header nem o valor do segredo.
 

@@ -1,5 +1,6 @@
-// Disparo das rotinas agendadas pelo agendador externo (D-01).
-// Autenticação só por segredo: Authorization: Bearer <ROTINAS_SECRET>.
+// Disparo das rotinas agendadas pelo agendador (D-01, ADR-001: Vercel Schedules).
+// Autenticação só por segredo: Authorization: Bearer <CRON_SECRET>, que a Vercel
+// injeta; ROTINAS_SECRET é a alternativa para execução local e outros agendadores.
 // Liberada em PUBLIC_PATHS do middleware.js. NUNCA logar o header/segredo.
 import { timingSafeEqual } from 'crypto';
 import { getDb } from '../../../lib/mongodb';
@@ -22,7 +23,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Metodo nao permitido' });
   }
 
-  const segredo = process.env.ROTINAS_SECRET;
+  const segredo = process.env.CRON_SECRET || process.env.ROTINAS_SECRET;
   if (!segredo) return res.status(503).json({ error: 'Rotinas nao configuradas' });
   if (!segredoValido(req, segredo)) return res.status(401).json({ error: 'Nao autorizado' });
 
