@@ -1,0 +1,17 @@
+{
+  "feature": "001-rotinas-agendadas",
+  "lockedAt": "2026-11-20 15:12",
+  "total": 5,
+  "files": [
+    {
+      "path": "tests/contract/001-rotinas-agendadas.contract.test.js",
+      "sha256": "9bb728ae21753c2bb1a56210e32662396312d9e22b75c09dbc5c291af766172c",
+      "tests": 5
+    },
+    {
+      "path": "tests/helpers/repositorio-rotinas-memoria.js",
+      "sha256": "ead584bf29b53d330ccf1210691f92d69de3c259390f0663c7bab0092035e9b4",
+      "tests": 0
+    }
+  ]
+}

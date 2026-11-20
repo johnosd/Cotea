@@ -1,0 +1,17 @@
+{
+  "bsonType": "object",
+  "required": ["_id", "rotinaId", "chave", "situacao", "tentativas", "criadoEm", "atualizadoEm"],
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "rotinaId": { "bsonType": "string" },
+    "chave": { "bsonType": "string" },
+    "dados": { "bsonType": "object" },
+    "situacao": { "enum": ["processando", "concluido", "ignorado", "falha", "falha_definitiva"] },
+    "tentativas": { "bsonType": ["int", "long", "double"] },
+    "ultimoErro": { "bsonType": ["string", "null"] },
+    "travadoAte": { "bsonType": ["date", "null"] },
+    "concluidoEm": { "bsonType": ["date", "null"] },
+    "criadoEm": { "bsonType": "date" },
+    "atualizadoEm": { "bsonType": "date" }
+  }
+}

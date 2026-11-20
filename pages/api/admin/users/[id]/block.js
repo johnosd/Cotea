@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth';
 import { ObjectId } from 'mongodb';
-import { authOptions } from '../../auth/[...nextauth]';
+import { authOptions } from '../../../auth/[...nextauth]';
 import { getDb } from '../../../../../lib/mongodb';
 import { PERMISSIONS, hasRole } from '../../../../../lib/authz';
 import { logAudit } from '../../../../../lib/audit';

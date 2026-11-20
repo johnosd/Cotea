@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
 import { PERMISSIONS, hasRole } from '../../lib/authz';
+import RotinasTab from '../../components/admin/RotinasTab';
 
 const ROLES = [
   { value: 'user',    label: 'Usuário' },
@@ -24,6 +25,7 @@ const TABS = [
   { id: 'groups', label: 'Grupos', roles: PERMISSIONS.GROUPS_TAB },
   { id: 'withdrawals', label: 'Saques', roles: PERMISSIONS.WITHDRAWALS_TAB },
   { id: 'audit', label: 'Auditoria', roles: PERMISSIONS.AUDIT_TAB },
+  { id: 'rotinas', label: 'Rotinas', roles: PERMISSIONS.ROTINAS_TAB },
 ];
 
 function UsersTab({ allowed, canChangeRole, currentUserId }) {
@@ -285,7 +287,7 @@ export default function AdminPanel() {
   }
 
   const userRole = session?.user?.systemRole || 'user';
-  if (!isAllowed([...PERMISSIONS.USERS_TAB, ...PERMISSIONS.GROUPS_TAB, ...PERMISSIONS.WITHDRAWALS_TAB, ...PERMISSIONS.AUDIT_TAB])) {
+  if (!isAllowed([...PERMISSIONS.USERS_TAB, ...PERMISSIONS.GROUPS_TAB, ...PERMISSIONS.WITHDRAWALS_TAB, ...PERMISSIONS.AUDIT_TAB, ...PERMISSIONS.ROTINAS_TAB])) {
     return (
       <>
         <Header />
@@ -317,6 +319,8 @@ export default function AdminPanel() {
         return <WithdrawalsTab allowed={isAllowed(PERMISSIONS.WITHDRAWALS_TAB)} />;
       case 'audit':
         return <AuditTab allowed={isAllowed(PERMISSIONS.AUDIT_TAB)} />;
+      case 'rotinas':
+        return <RotinasTab allowed={isAllowed(PERMISSIONS.ROTINAS_TAB)} />;
       default:
         return <div className="text-gray-700">Selecione uma aba valida.</div>;
     }

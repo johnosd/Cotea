@@ -1,3 +1,7 @@
+> **Documento historico.** A fonte de verdade das regras de negocio e o
+> [regras-negocio-v2.md](regras-negocio-v2.md). Este arquivo (v1) e mantido apenas
+> como registro e pode estar desatualizado.
+
 # Regras de Negocio
 
 Este documento define regras e fluxos internos da aplicacao de compartilhamento

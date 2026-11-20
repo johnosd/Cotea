@@ -9,9 +9,11 @@ npm run dev      # Start dev server (http://localhost:3000)
 npm run build    # Production build
 npm run start    # Start production server
 npm run lint     # Run ESLint
+npm test         # Run Vitest (all tests)
+npm run test:contrato  # Run only locked SDD contract tests (tests/contract)
 ```
 
-No test framework is configured.
+Tests use **Vitest** (`vitest.config.mjs`, files in `tests/**/*.test.js`). Files listed in `sdd/specs/*/contract-tests.lock` are locked contract tests — never edit them. On Windows, run tests from `J:\Cotea` (uppercase drive letter); from `j:\` Vitest loads twice and fails with `Cannot read properties of undefined (reading 'config')`.
 
 ## Architecture
 
@@ -80,6 +82,8 @@ R2_PUBLIC_BASE_URL
 R2_ENDPOINT
 SESSION_MAX_AGE_SECONDS     # optional, default 86400
 SESSION_UPDATE_AGE_SECONDS  # optional, default 1800
+CRON_SECRET                 # bearer secret sent by Vercel Schedules to /api/rotinas/executar (ADR-001)
+ROTINAS_SECRET              # fallback bearer secret for local runs/other schedulers (route returns 503 if neither is set)
 ```
 
 ### Remote image domains

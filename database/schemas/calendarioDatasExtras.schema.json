@@ -1,0 +1,10 @@
+{
+  "bsonType": "object",
+  "required": ["_id", "descricao", "criadoPor", "criadoEm"],
+  "properties": {
+    "_id": { "bsonType": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "descricao": { "bsonType": "string", "minLength": 1, "maxLength": 100 },
+    "criadoPor": { "bsonType": "string" },
+    "criadoEm": { "bsonType": "date" }
+  }
+}
