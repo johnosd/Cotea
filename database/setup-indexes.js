@@ -64,6 +64,21 @@ async function createIndexes() {
   // verificationCodes — TTL para expirar códigos automaticamente
   await db.collection('verificationCodes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+  // rotinaItens — idempotência das rotinas agendadas (rotinaId + chave únicos; nunca expira)
+  await db.collection('rotinaItens').createIndex({ rotinaId: 1, chave: 1 }, { unique: true });
+
+  // rotinaItens — painel de rotinas (itens em falha por rotina)
+  await db.collection('rotinaItens').createIndex({ rotinaId: 1, situacao: 1, atualizadoEm: -1 });
+
+  // rotinaExecucoes — última execução / histórico por rotina
+  await db.collection('rotinaExecucoes').createIndex({ rotinaId: 1, inicio: -1 });
+
+  // rotinaExecucoes — TTL de 90 dias para o histórico de execuções
+  await db.collection('rotinaExecucoes').createIndex({ inicio: 1 }, { expireAfterSeconds: 7776000 });
+
+  // rotinaSaudeSondas — TTL de 7 dias para sondas de teste da rotina de saúde
+  await db.collection('rotinaSaudeSondas').createIndex({ criadoEm: 1 }, { expireAfterSeconds: 604800 });
+
   console.log('Índices criados com sucesso.');
   await client.close();
 }

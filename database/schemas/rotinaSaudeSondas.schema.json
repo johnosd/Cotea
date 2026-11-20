@@ -1,0 +1,10 @@
+{
+  "bsonType": "object",
+  "required": ["_id", "venceEm", "falhar", "criadoEm"],
+  "properties": {
+    "_id": { "bsonType": "string" },
+    "venceEm": { "bsonType": "date" },
+    "falhar": { "bsonType": "bool" },
+    "criadoEm": { "bsonType": "date" }
+  }
+}

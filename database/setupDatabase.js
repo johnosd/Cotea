@@ -135,6 +135,27 @@ async function run() {
     await db.collection("withdrawals").createIndex({ walletId: 1 });
     await db.collection("withdrawals").createIndex({ status: 1 });
 
+    // 13) Rotinas agendadas — itens (chave de idempotencia; SEM TTL)
+    const rotinaItensSchema = await loadSchema("rotinaItens.schema.json");
+    await createCollection("rotinaItens", rotinaItensSchema);
+    await db.collection("rotinaItens").createIndex({ rotinaId: 1, chave: 1 }, { unique: true });
+    await db.collection("rotinaItens").createIndex({ rotinaId: 1, situacao: 1, atualizadoEm: -1 });
+
+    // 14) Rotinas agendadas — execucoes (historico com TTL de 90 dias)
+    const rotinaExecucoesSchema = await loadSchema("rotinaExecucoes.schema.json");
+    await createCollection("rotinaExecucoes", rotinaExecucoesSchema);
+    await db.collection("rotinaExecucoes").createIndex({ rotinaId: 1, inicio: -1 });
+    await db.collection("rotinaExecucoes").createIndex({ inicio: 1 }, { expireAfterSeconds: 7776000 });
+
+    // 15) Calendario — datas extras nao uteis (_id = 'YYYY-MM-DD')
+    const calendarioSchema = await loadSchema("calendarioDatasExtras.schema.json");
+    await createCollection("calendarioDatasExtras", calendarioSchema);
+
+    // 16) Rotina de saude — sondas de teste (TTL de 7 dias)
+    const sondasSchema = await loadSchema("rotinaSaudeSondas.schema.json");
+    await createCollection("rotinaSaudeSondas", sondasSchema);
+    await db.collection("rotinaSaudeSondas").createIndex({ criadoEm: 1 }, { expireAfterSeconds: 604800 });
+
     console.log("\nBanco configurado com sucesso!");
   } catch (error) {
     console.error("Erro:", error);
