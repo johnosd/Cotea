@@ -410,7 +410,7 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 
 | Data | Área | Resumo |
 | --- | --- | --- |
-|
+| 2026-11-20 | Auth/login | `/admin` não abria logado em produção: middleware passa `secureCookie` pelo protocolo (cookie `__Secure-` em HTTPS) e `/auth/signin` respeita `callbackUrl` só com caminhos internos (`lib/redirecionamento.js`, teste em `tests/redirecionamento.test.js`) |
 
 ## Bugs
 

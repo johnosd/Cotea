@@ -37,7 +37,10 @@ export async function middleware(req) {
   }
 
   const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-  const token = await getToken({ req, secret });
+  // Em HTTPS o NextAuth grava o cookie como "__Secure-next-auth.session-token".
+  // Sem NEXTAUTH_URL, o getToken só usaria esse nome se process.env.VERCEL estiver
+  // visível no runtime do middleware — por isso o protocolo é informado explicitamente.
+  const token = await getToken({ req, secret, secureCookie: req.nextUrl.protocol === 'https:' });
 
   if (!token) {
     const callbackUrl = pathname + (search || '');
