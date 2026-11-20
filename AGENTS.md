@@ -17,9 +17,10 @@ Instrucoes essenciais para agentes trabalhando neste repositorio.
 - Build: `npm run build`
 - Producao local: `npm run start`
 - Lint configurado no `package.json`: `npm run lint`
+- Testes (Vitest): `npm test`; so os contratos travados do SDD: `npm run test:contrato`
 - Configurar/atualizar colecoes, validators e indices do MongoDB: `node database/setupDatabase.js`
 
-Observacao: nao ha suite de testes automatizados configurada no reposititorio. Para mudancas de comportamento, valide com `npm run build` e fluxo manual relevante.
+Observacao: a suite de testes usa Vitest (`vitest.config.mjs`, arquivos em `tests/**/*.test.js`). Arquivos listados em `sdd/specs/*/contract-tests.lock` sao testes de contrato travados: nao edite. No Windows, rode os testes a partir de `J:\Cotea` (drive em maiuscula); a partir de `j:\` o Vitest carrega duas vezes e falha com `reading 'config'`. Para mudancas de comportamento, valide tambem com `npm run build` e o fluxo manual relevante.
 
 ## Variaveis de Ambiente
 
@@ -32,6 +33,7 @@ Variaveis usadas pelo app:
 - Admin legado/autorizacao: `ADMIN_EMAILS`
 - E-mail: `EMAIL_USER`, `EMAIL_PASS`
 - URL publica: `NEXT_PUBLIC_SITE_URL`
+- Rotinas agendadas: `ROTINAS_SECRET` (segredo Bearer do agendador que chama `/api/rotinas/executar`; sem ele a rota responde 503)
 - R2: `CLOUDFLARE_R2_ACCOUNT_ID`, `R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ENDPOINT`, `R2_ENDPOINT`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, `R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, `R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_R2_BUCKET`, `R2_BUCKET_NAME`, `CLOUDFLARE_R2_PUBLIC_BASE_URL`, `R2_PUBLIC_BASE_URL`
 
 ## Estrutura e Padroes

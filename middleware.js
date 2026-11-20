@@ -6,6 +6,7 @@ const PUBLIC_PATHS = [
   /^\/grupos\/[^/]+\/?$/i, // detalhes do grupo
   /^\/api\/grupos(\/.*)?$/i, // APIs de grupos (para listar detalhes)
   /^\/api\/auth(\/.*)?$/i, // NextAuth
+  /^\/api\/rotinas\/executar\/?$/i, // agendador externo; protegida por ROTINAS_SECRET na propria rota
   /^\/_next\/.*/i, // assets Next.js
   /^\/favicon\.ico$/i,
   /^\/auth\/signin$/i,

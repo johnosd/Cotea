@@ -1067,6 +1067,26 @@ Regras:
 - IDs de MongoDB podem aparecer como `ObjectId` ou string; cada handler deve normalizar antes de comparar.
 - Dados sensiveis como CPF devem ser criptografados em repouso.
 
+## Prazos e calendario
+
+Regra unica para todos os prazos deste documento (SLA de acesso, aprovacao
+automatica, saque, disputas, faturas, convites, repasse e grupos
+`apos_completar`). Implementada em `lib/calendario.js` (feature
+`001-rotinas-agendadas`).
+
+- Todos os limites de dia usam o horario de Brasilia (`America/Sao_Paulo`).
+- **Dias corridos**: o prazo vence no instante exato do evento somado de N x 24h
+  (ex.: 5 dias corridos = 120 horas).
+- **Dias uteis**: o prazo vence no fim do dia (23:59:59) do N-esimo dia util
+  posterior ao dia do evento. O dia do evento nunca conta, seja util ou nao.
+- Nao sao dias uteis: sabados, domingos, feriados nacionais (01/01, Sexta-feira
+  Santa, 21/04, 01/05, 07/09, 12/10, 02/11, 15/11, 20/11 e 25/12) e as datas
+  extras cadastradas pelo admin do sistema (ex.: Carnaval, Corpus Christi, pontes).
+- Prazos em dias uteis ainda nao vencidos usam o calendario vigente no momento
+  da verificacao; prazos ja vencidos e processados nao sao revistos.
+- O sistema age em ate 1 hora apos o vencimento, por rotinas automaticas que
+  processam cada evento uma unica vez.
+
 ## Regras financeiras consolidadas
 
 - Valores monetarios devem ser normalizados para duas casas decimais.

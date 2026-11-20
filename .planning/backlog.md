@@ -329,6 +329,23 @@ P0 devem ser corrigidos antes de depender do checkout v2.
   404 após gravar e aprovar/rejeitar saque responde 400 após confirmar o
   lançamento. Não reproduzido — achado no `sdd-plan` da 001 (2026-11-20).
 
+- **[Bug] B-07 · P1 · Hooks React chamados condicionalmente nas telas de grupo
+  do admin** — `npx eslint .` acusa 21 erros em `pages/admin/grupos/[id].js`
+  (`useState`/`useMemo`/`useEffect` depois de retorno antecipado, além de prop
+  duplicada na linha 381) e 1 em `pages/admin/grupos/novo.js:80` (`useEffect`
+  condicional). Pode causar erro de render ao alternar estados de sessão.
+  Achado no `sdd-execute` da 001 (2026-11-20); tratar via `sdd-bugfix`.
+- **[Bug] B-08 · P2 · `npm run lint` não roda** — `next lint` (Next 14) não
+  reconhece o `eslint.config.mjs` em formato flat e abre um prompt interativo;
+  usar `npx eslint .` até migrar o script. Achado no `sdd-execute` da 001
+  (2026-11-20).
+
+- **[Bug] B-09 · P3 · `database/setup-indexes.js` conflita com `setupDatabase.js`**
+  — cria `walletTransactions { referenceId, type, source }` sem `unique`/parcial,
+  mas `setupDatabase.js` já cria o mesmo índice como único parcial; o script
+  aborta com `IndexKeySpecsConflict` (code 86) e não cria os índices seguintes.
+  Achado no `sdd-execute` da 001 (2026-11-20).
+
 ### Decisões a esclarecer em `sdd-specify`
 
 - Data-base do ciclo (vencimento, início, dias do ciclo e arredondamento),
@@ -387,7 +404,7 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 
 | Slug | Título | Status | Progresso | Última Atualização |
 | --- | --- | --- | --- | --- |
-| 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Em Execução | 5/43 tasks | 2026-11-20 |
+| 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Em Execução | 39/44 tasks | 2026-11-20 |
 
 ## Melhorias Ad-hoc
 

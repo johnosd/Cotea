@@ -213,10 +213,14 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | Área | Estado |
 | --- | --- |
-| Persistência | 4 schemas + coleções/índices em `setupDatabase.js` e `setup-indexes.js`; ainda não aplicados ao banco |
-| Permissão | `PERMISSIONS.ROTINAS_TAB = ['admin']` |
-| Executor / calendário | stubs (contratos 0/5) |
-| Rotas / painel | não iniciados |
+| Persistência | 4 coleções + índices aplicados no banco de desenvolvimento (`setupDatabase.js`) |
+| Executor / repositório Mongo | prontos; contratos 3/3; concorrência real validada (quickstart 4) |
+| Calendário | pronto; contratos 2/2 |
+| Disparo | `/api/rotinas/executar` validado (quickstart 1–6) |
+| Painel / datas extras | implementados; validação com sessão real (quickstart 7–11) pendente com o usuário |
+| Testes | Vitest 25/25 (contratos 5/5, trava íntegra) |
+| Gates | build ok; lint do projeto bloqueado por B-07/B-08 (pré-existentes); arquivos da feature sem erros de ESLint |
+| Docs | `CLAUDE.md`, `AGENTS.md`, `.docs/regras-negocio-v2.md` atualizados |
 
 ## Riscos e Decisões
 
@@ -227,13 +231,14 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | ID | Risco/Decisão | Impacto | Mitigação/Encaminhamento |
 | --- | --- | --- | --- |
-| R-001 | Plataforma de deploy e agendador indefinidos | FR-002 (até 1h) depende de alguém chamar a rota | D-01: rota agnóstica; abrir `sdd-adr` antes do deploy (Vercel Cron, GitHub Actions ou cron do sistema); frequência recomendada de 15 min |
+| R-001 | Plataforma de deploy e agendador indefinidos | FR-002 (até 1h) depende de alguém chamar a rota | D-01: rota agnóstica implementada (GET/POST + Bearer). **Encaminhamento (T030)**: abrir `sdd-adr` do agendador antes do deploy (Vercel Cron, GitHub Actions ou cron do sistema), chamando `/api/rotinas/executar` a cada 15 min; até lá, FR-002/SC-001 só são verificáveis disparando manualmente |
 | R-002 | Lease (10 min) expira durante um processamento longo e outra execução assume o item | Efeito duplicado | Lease maior que o timeout serverless típico; `processarItem` idempotente pelo evento (R-006) |
-| R-003 | Contratos usam o repositório em memória; a atomicidade real do Mongo não tem teste automatizado | Divergência fake × Mongo passaria despercebida | `logic/executor.md` fixa a operação; quickstart passo 4 (duas chamadas simultâneas) é gate da Fase 3 |
+| R-003 | Contratos usam o repositório em memória; a atomicidade real do Mongo não tem teste automatizado | Divergência fake × Mongo passaria despercebida | Resolvido: quickstart passo 4 no banco de desenvolvimento — 20 sondas, 2 chamadas simultâneas, 10 + 10 processados, 0 duplicatas (2026-11-20) |
 | R-004 | Tempo limite serverless com muitos itens vencidos | Execução cortada no meio | `limite` de 500 itens; itens restantes na próxima execução; item interrompido volta após o lease |
 | R-005 | Vitest no Windows falha com `Cannot read properties of undefined (reading 'config')` quando o caminho usa `j:` minúsculo | Falso vermelho / suíte não roda | Rodar de `J:\Cotea` (PowerShell `Set-Location J:\Cotea`) |
 | R-006 | Processo morre depois do efeito e antes de `concluirItem` | Item reprocessado | Exigência às features consumidoras: efeito idempotente (ex.: índice único do ledger) |
 | R-007 | `findOneAndUpdate` no driver 6.16 retorna o documento, não `{ value }`; handlers antigos usam `.value` | Copiar o padrão antigo quebra o repositório | `logic/executor.md` alerta; suspeita de bug existente registrada no backlog |
+| R-008 | Gates de lint/build do projeto falham por problemas PRÉ-EXISTENTES fora desta feature: `next lint` (Next 14) não reconhece o `eslint.config.mjs` flat e abre prompt; `npx eslint .` acusa 22 erros em `pages/admin/grupos/[id].js` e `novo.js` (hooks condicionais, prop duplicada); `npm run build` falha em `pages/api/admin/users/[id]/block.js` (import `'../../auth/[...nextauth]'` inexistente — o correto é `'../../../auth/…'`, como em `role.js`) | Checklist de Release não fecha (build/lint) | Resolvido parcialmente: usuário aprovou corrigir o import de `block.js` (T032) — build passa; erros de lint viraram B-07/B-08 no backlog; conflito do `setup-indexes.js` virou B-09 |
 
 ## Execution Notes
 
@@ -246,16 +251,23 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | Data | Fase/Story | Resumo | Pendência Principal |
 | --- | --- | --- | --- |
 | 2026-11-20 | Fase 1 Setup | Schemas, coleções/índices e permissão `ROTINAS_TAB` | Rodar `node database/setupDatabase.js` no banco (decisão do usuário) |
+| 2026-11-20 | Fase 2 Foundational | Repositório Mongo, registro, rotina de saúde, script de sondas, leitura/validação de datas extras | Validar repositório no banco real (quickstart) |
+| 2026-11-20 | Fase 3 US1 | Executor, alertas, rota do agendador e middleware; contratos 3/3 + 6 testes extras | Quickstart 1–6 no banco real (R-003) |
+| 2026-11-20 | Fase 4 US2 | Calendário puro; contratos 5/5, suíte 17/17 | — |
+| 2026-11-20 | Fase 5 US3 | APIs do painel, `RotinasTab`, aba admin, testes de reexecução (suíte 21/21) | Quickstart 7–9, 11 |
+| 2026-11-20 | Fase 6 US4 | API e componente de datas extras (suíte 25/25) | Quickstart 10 |
+| 2026-11-20 | Fase 7 Polish (parcial) | Docs (`CLAUDE.md`, `AGENTS.md`, regra de prazos em `.docs/regras-negocio-v2.md`), R-001 encaminhado; suíte 25/25 | Build/lint bloqueados por problemas pré-existentes (R-008); quickstart pendente |
+| 2026-11-20 | Fase 7 Polish | T032 (import `block.js`), build ok, banco configurado, quickstart 1–6 ok; B-07/B-08/B-09 no backlog | Quickstart 7–11 com login do usuário |
 
-**PRÓXIMO**: Fase 2 — T005 `lib/rotinas/repositorio-mongo.js` (replicar a interface do fake travado)
+**PRÓXIMO**: usuário executa quickstart 7–11 no `/admin?tab=rotinas` (login Google, admin e um usuário support); depois marcar T031 e os itens de Fase 5/6 e rodar `sdd-converge`
 
 ## Arquivos Principais
 
 <!-- Sobrescrita a cada checkpoint — foco da etapa atual, não a árvore inteira. -->
 
-- `database/schemas/rotinaItens.schema.json`, `rotinaExecucoes.schema.json`, `calendarioDatasExtras.schema.json`, `rotinaSaudeSondas.schema.json`
-- `database/setupDatabase.js`, `database/setup-indexes.js`
-- `lib/authz.js`
+- `components/admin/RotinasTab.js`, `components/admin/CalendarioDatasExtras.js` (validação manual pendente)
+- `pages/api/admin/rotinas/*`, `pages/api/admin/calendario.js`
+- `sdd/specs/001-rotinas-agendadas/quickstart.md` passos 7–11
 
 ## Cuidados para Retomada
 
@@ -264,3 +276,7 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 - Rodar Vitest a partir de `J:\Cotea` (drive maiúsculo); de `j:\` a suíte quebra com `reading 'config'` (R-005).
 - `database/setupDatabase.js` aplica `collMod` em TODAS as coleções: só rodar com autorização do usuário.
 - Heredoc no Git Bash comeu `\d` num `pattern` de JSON Schema; o schema usa `[0-9]`.
+- `lib/rotinas/autorizacao.js` importa `authOptions` de `pages/api/auth/[...nextauth]` (lib → pages); se isso virar problema de build, mover a guarda para cada rota.
+- `npm run lint` abre prompt interativo (Next 14 não lê config flat); use `npx eslint <arquivos>` para checar os arquivos da feature.
+- `database/setup-indexes.js` aborta em `walletTransactions` (B-09) antes de chegar aos índices de rotinas; use `node database/setupDatabase.js`, que cria os mesmos índices.
+- Para o quickstart, o segredo local foi passado só ao processo do dev server (`$env:ROTINAS_SECRET`), sem gravar no `.env.local`.
