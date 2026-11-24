@@ -1,13 +1,22 @@
 {
   "bsonType": "object",
+  "required": ["walletId", "type", "amount", "status", "categoria", "organizacaoId"],
   "properties": {
     "_id": { "bsonType": "string" },
     "walletId": { "bsonType": "string" },
-    "type": { "bsonType": "string" },
+    "type": { "enum": ["credit", "debit"] },
     "amount": { "bsonType": "number" },
     "source": { "bsonType": "string" },
     "referenceId": { "bsonType": ["string", "null"] },
-    "status": { "bsonType": "string" },
+    "status": { "enum": ["confirmed", "blocked", "pending", "cancelled"] },
+    "categoria": {
+      "enum": ["pessoal", "caucao", "retido_entrada", "recebivel_retido", "disputa", "receita_taxa"]
+    },
+    "organizacaoId": { "bsonType": ["string", "null"] },
+    "grupoId": { "bsonType": ["string", "null"] },
+    "participacaoId": { "bsonType": ["string", "null"] },
+    "operacaoId": { "bsonType": "string" },
+    "pernasTotal": { "bsonType": "int", "minimum": 1 },
     "createdAt": { "bsonType": "date" },
     "description": { "bsonType": "string" }
   }

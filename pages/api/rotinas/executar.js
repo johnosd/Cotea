@@ -5,7 +5,7 @@
 import { timingSafeEqual } from 'crypto';
 import { getDb } from '../../../lib/mongodb';
 import { executarRotina } from '../../../lib/rotinas/executor';
-import { montarDependencias } from '../../../lib/rotinas/dependencias';
+import { montarDependencias, PRAZO_EXECUCAO_MS } from '../../../lib/rotinas/dependencias';
 import { listarRotinas, obterRotina } from '../../../lib/rotinas/registro';
 
 function segredoValido(req, segredo) {
@@ -39,9 +39,13 @@ export default async function handler(req, res) {
     const db = await getDb();
     const { repo, alertar, contexto } = await montarDependencias(db);
 
+    // Orçamento de tempo compartilhado entre as rotinas desta chamada (cada uma
+    // ainda tenta pelo menos 1 item, então nenhuma rotina fica sem progresso).
+    const inicio = Date.now();
     const execucoes = [];
     for (const rotina of rotinas) {
-      const resultado = await executarRotina(rotina, { repo, alertar, contexto, origem: 'automatica' });
+      const prazoMs = Math.max(PRAZO_EXECUCAO_MS - (Date.now() - inicio), 1);
+      const resultado = await executarRotina(rotina, { repo, alertar, contexto, origem: 'automatica', prazoMs });
       execucoes.push({ rotinaId: rotina.id, ...resultado });
     }
 

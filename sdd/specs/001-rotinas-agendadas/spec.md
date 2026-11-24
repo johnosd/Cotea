@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-20
 
-**Status**: Em Execução
+**Status**: Convergida
 
 **Input**: Backlog `V2-01 · P0 · Rotinas agendadas idempotentes e calendário de
 dias úteis` — especificar o mecanismo de rotinas (gatilho, idempotência por

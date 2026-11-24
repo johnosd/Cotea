@@ -168,11 +168,13 @@ description: "Tasks da feature 001-rotinas-agendadas"
 
 **Registro da Fase**:
 
-- Status: implementada (2026-11-20); validação manual (quickstart 7–9, 11) PENDENTE
+- Status: concluída (2026-11-24) — quickstart 7–9 e 11 validados com login Google real
 - Feito: `reexecutarItem` (já entregue na Fase 3); APIs `pages/api/admin/rotinas/index.js`, `[id]/index.js`, `[id]/executar.js`, `[id]/reexecutar.js`; `components/admin/RotinasTab.js` (lista, detalhe, histórico, itens em falha, "Executar agora", "Reexecutar"); aba `rotinas` em `pages/admin/index.js`. Extras não previstos nas tasks: `lib/rotinas/autorizacao.js` (guarda única das rotas admin), `lib/rotinas/consultas.js` (agregações do painel) e `lib/rotinas/dependencias.js` (monta repo/alerta/contexto; o disparo automático passou a usá-lo)
 - Contrato: sem contrato nesta fase; `npm run test:contrato` segue 5/5, trava íntegra
 - Testes executados: `npx vitest run` (de `J:\Cotea`) → 4 arquivos, 21/21; `tests/rotinas/reexecutar.test.js` 4/4; `npx eslint …` sem erros (1 warning pré-existente em `pages/admin/index.js:262`, `useMemo` sem `isAllowed` — não introduzido aqui)
-- Pendências: quickstart 7–9 e 11 (painel com sessão real e 403 para support/finance/user) não executados — exigem servidor com o banco do usuário. `RotinasTab` importa `CalendarioDatasExtras` (Fase 6); o build só fecha após T026
+- Atualização 2026-11-24: quickstart 7–9 executados pela UI com Playwright e login Google real (conta admin, sessão `systemRole=admin`) — 15/15 PASS: aba lista `saude` com última execução; item em `falha_definitiva` com último erro achado em 0,9 s (SC-006); Reexecutar com sonda ainda falhando → tentativas = 1; com `falhar=false` → `concluido`; reexecutar de novo → `reprocessado: false`; "Executar agora" → execução `manual (<autorId>)` no histórico; `auditLogs` com `rotina.executada_manual`, `rotina.item_reexecutado`, `rotina.item_falha_definitiva`
+- Atualização 2026-11-24 (passo 11, login Google real com conta `systemRole=user`, perfil de navegador separado): 9/9 PASS — a aba "Rotinas" não aparece em `/admin`; `GET /api/admin/rotinas`, `GET /api/admin/rotinas/saude`, `POST …/saude/executar`, `POST …/saude/reexecutar`, `GET /api/admin/calendario?ano=2026` e `POST /api/admin/calendario` → 403. `support`/financeiro não foram exercitados em runtime (o banco dev não tem esses usuários); a guarda `exigirAdminRotinas` (`lib/rotinas/autorizacao.js`) só libera `PERMISSIONS.ROTINAS_TAB = ['admin']`, então qualquer outro papel cai no mesmo 403
+- Pendências: nenhuma de validação manual desta fase além do 403 em runtime para `support`/financeiro (coberto por leitura de código). `RotinasTab` importa `CalendarioDatasExtras` (Fase 6); o build já fecha (T032)
 
 ---
 
@@ -195,11 +197,12 @@ description: "Tasks da feature 001-rotinas-agendadas"
 
 **Registro da Fase**:
 
-- Status: implementada (2026-11-20); validação manual (quickstart 10 e US4-AC1 no ambiente real) PENDENTE
+- Status: concluída (2026-11-24) — quickstart 10 validado pela UI; US4-AC1 no ambiente real aceita como coberta pelo contrato automatizado (decisão do usuário)
 - Feito: `pages/api/admin/calendario.js` (GET por ano com feriados nacionais + datas extras; POST com `validarDataExtra`, 409 para feriado nacional e para duplicata via E11000; DELETE com `findOneAndDelete`; auditoria `calendario.data_extra_incluida`/`_removida`); `components/admin/CalendarioDatasExtras.js` renderizado no fim da `RotinasTab`
 - Contrato: sem contrato nesta fase; 5/5 seguem verdes, trava íntegra
 - Testes executados: `npx vitest run` (de `J:\Cotea`) → 5 arquivos, 25/25; `tests/calendario-dados.test.js` 4/4 (validação, bissexto, leitura com `db` fake); `npx eslint pages/api/admin/calendario.js components/admin tests` sem achados
-- Pendências: quickstart passo 10 e verificação de que uma data extra adia um prazo pendente no ambiente real
+- Atualização 2026-11-24: quickstart passo 10 executado pela UI (Playwright, login admin real) — incluir `2026-02-17 / Carnaval` aparece na lista; repetir → "Data ja cadastrada"; `2026-11-20` → "Data ja e feriado nacional"; remover → some; `auditLogs` com `calendario.data_extra_incluida`/`_removida`. A data extra de teste foi removida (banco sem datas extras)
+- Pendências: nenhuma. Aceito pelo usuário (2026-11-24): a verificação de que uma data extra adia um prazo pendente no ambiente real (US4-AC1) fica coberta só pelo contrato automatizado
 
 ---
 
@@ -210,18 +213,23 @@ description: "Tasks da feature 001-rotinas-agendadas"
 - [X] T028 [P] Atualizar `CLAUDE.md` e `AGENTS.md`: `ROTINAS_SECRET` (só o nome) na lista de variáveis; `npm test`/`npm run test:contrato` nos comandos; trocar "No test framework is configured"/"nao ha suite de testes" por Vitest; nota sobre rodar de `J:\Cotea` no Windows
 - [X] T029 [P] Acrescentar a `.docs/regras-negocio-v2.md` a definição de dia útil e de contagem de prazos adotada (FR-010..013) — Constitution III
 - [X] T030 Registrar no `plan.md` (Riscos) a recomendação de abrir `sdd-adr` para o agendador (R-001) e a frequência de 15 min
-- [ ] T031 Rodar `quickstart.md` inteiro
+- [X] T031 Rodar `quickstart.md` inteiro (2026-11-24; US4-AC1 no ambiente real e 403 em runtime de `support`/financeiro aceitos como cobertos por contrato automatizado e leitura de código — decisão do usuário)
 - [X] T032 [desvio aprovado, descoberto em T031/gate de build] Corrigir import inexistente em `pages/api/admin/users/[id]/block.js` (`../../auth/` → `../../../auth/[...nextauth]`), que impedia o `npm run build` — bug pré-existente fora do escopo, corrigido por decisão do usuário
 - [X] T033 [ADR-001] Rota `pages/api/rotinas/executar.js` aceita `CRON_SECRET` (padrão da Vercel) com `ROTINAS_SECRET` como alternativa; `vercel.json` com `regions: ["gru1"]` e o schedule `rotinas` (`*/15 * * * *` → `/api/rotinas/executar`); `.tools/start.sh`, `CLAUDE.md`, `AGENTS.md`, `contracts/api-rotinas.md` e `quickstart.md` atualizados. Verificado: `npx vitest run` 25/25, build ok, dev server só com `CRON_SECRET` → 401 sem segredo, 200 com `Bearer CRON_SECRET`
+- [X] T034 [desvio aprovado, descoberto no gate de lint de T031] Resolver B-07/B-08, bugs pré-existentes fora do escopo, por decisão do usuário (2026-11-24): (B-07) em `pages/admin/grupos/[id].js` e `novo.js` mover os retornos antecipados de `loading`/`unauthenticated` para depois de todos os hooks, e remover a prop `className` duplicada (a 1ª era sobrescrita pela 2ª) em `[id].js`; (B-08) `package.json` `lint` → `eslint .` e `eslint.config.mjs` com `ignores` de `.next/`, `node_modules/`, `out/`, `coverage/`
 
 **Registro da Fase** (parcial, 2026-11-20):
 
-- Status: em andamento — bloqueada por decisão do usuário (R-008)
+- Status: concluída (2026-11-24) — gates de lint e build passando após o desvio T034 (B-07/B-08)
 - Feito: T028 (`CLAUDE.md`/`AGENTS.md`: Vitest, `npm test`, `test:contrato`, `ROTINAS_SECRET`, nota do drive), T029 (seção "Prazos e calendario" em `.docs/regras-negocio-v2.md`), T030 (R-001 encaminhado para `sdd-adr`)
 - Contrato: `npm run test:contrato` → 5/5 verdes; trava íntegra
 - Testes executados: `npx vitest run` (de `J:\Cotea`) → 25/25; `npx eslint .` → 22 erros, todos em `pages/admin/grupos/[id].js` e `novo.js` (não tocados); `npm run lint` → prompt interativo (config flat não suportada pelo `next lint` 14); `npm run build` → falha em `pages/api/admin/users/[id]/block.js` (import inexistente, pré-existente)
 - Pendências: T031 parcial — quickstart 1–6 executado (ver Fase 3); passos 7–11 (painel com sessão real, reexecução pela UI, calendário, 403 para support/finance/user) dependem de login Google e ficam com o usuário; sem sessão, as rotas `/api/admin/rotinas*` e `/api/admin/calendario` já redirecionam (307) para o login. Lint do projeto bloqueado por B-07/B-08 (pré-existentes, registrados no backlog)
+- Atualização 2026-11-24 (T034, desvio aprovado pelo usuário): B-07/B-08 resolvidos. `npm run lint` (agora `eslint .`) → 0 erros, 5 warnings antigos (`admin/index.js:262`, `assinatura/sucesso.js` ×2, `cadastro.js`, `grupos/[id].js:80`); `npm run build` → exit 0 (dev server parado antes); `npm test` 28/28; `npm run test:contrato` 5/5; trava íntegra. Regressão em navegador (Playwright, sessão admin real): `/admin/grupos/novo` e `/admin/grupos/<id>` com o código ANTIGO → "Rendered more hooks than during the previous render" e formulário não renderiza (2/2 FAIL); com a correção → 0 erros de hooks e formulário renderizado (2/2 PASS). A própria regra `react-hooks/rules-of-hooks` do `npm run lint` agora guarda contra o retorno do problema
 - Atualização 2026-11-20 (após decisão do usuário): T032 corrigiu o import de `block.js`; `npm run build` passa (rotas novas compiladas); `node database/setupDatabase.js` aplicado (4 coleções + índices confirmados no banco); `database/setup-indexes.js` aborta antes dos índices novos por conflito pré-existente em `walletTransactions` (B-09) — irrelevante aqui, pois `setupDatabase.js` já cria os mesmos índices
+
+- Atualização 2026-11-22 (validação do login Google com Playwright 1.65.1, instalado fora do repo): script headless, 8/8 PASS — sem sessão, `/admin?tab=rotinas` redireciona a `/auth/signin` com `callbackUrl` preservado; o botão "Entrar com Google" leva a `accounts.google.com` com `redirect_uri=http://localhost:3000/api/auth/callback/google`, escopo `openid email profile`, sem `redirect_uri_mismatch`/`invalid_client`. A etapa autenticada (retorno ao `callbackUrl`, quickstart 7–11 pela UI) NÃO rodou: a janela do Chrome abriu em `accounts.google.com`, mas o login manual não foi concluído nos 8 min de espera. Banco dev: não há usuário `support` (1 admin, 2 user, 1 sem role) — o passo 11 precisa de uma segunda conta sem role admin. Nenhum dado foi gravado nesta tentativa
+- Atualização 2026-11-24 (login Google real, conta admin): login concluído com sessão NextAuth (`systemRole=admin`, `contaValidada=true`, `isBlocked=false`) e retorno a `/admin?tab=rotinas` pelo `callbackUrl`; quickstart 7–10 verdes (ver Fases 5 e 6). Passo 11 também executado (9/9, conta `user`; ver Fase 5). T031 segue aberta só pela US4-AC1 no ambiente real (data extra adiando um prazo pendente) e pelo 403 em runtime de `support`/financeiro, não exercitado por falta de usuários. Efeitos no banco dev: sonda `6deaeef0…` de `falha_definitiva` → `concluido` (e `falhar=false`); 1 execução manual registrada; data extra criada e removida
 
 ### Checklist de Release
 
@@ -229,14 +237,14 @@ description: "Tasks da feature 001-rotinas-agendadas"
 - [X] Fase 2 (Foundational) concluída
 - [X] Fase 3 (US1) concluída, com quickstart passo 4 (concorrência real) aprovado
 - [X] Fase 4 (US2) concluída
-- [ ] Fase 5 (US3) concluída
-- [ ] Fase 6 (US4) concluída
+- [X] Fase 5 (US3) concluída
+- [X] Fase 6 (US4) concluída
 - [X] Testes de contrato 5/5 verdes na suíte completa e `check-contract-tests.ps1 -Slug 001-rotinas-agendadas` íntegro
 - [X] `npm test` verde
-- [ ] `npm run lint` e `npm run build` passando
+- [X] `npm run lint` e `npm run build` passando (lint: 0 erros, 5 warnings pré-existentes; build exit 0 — 2026-11-24)
 - [X] Schemas e índices das 4 coleções novas documentados e criados (Constitution IV)
 - [X] Nenhum log/resposta expõe `ROTINAS_SECRET` (Constitution I)
-- [ ] `quickstart.md` executado com sucesso
+- [X] `quickstart.md` executado com sucesso
 
 ---
 
@@ -279,3 +287,23 @@ description: "Tasks da feature 001-rotinas-agendadas"
 - Commitar após cada task ou grupo lógico coerente
 
 <!-- sdd-converge anexa "## Phase N: Convergence" abaixo desta linha -->
+
+## Phase 8: Convergence
+
+**Purpose**: Fechar as lacunas achadas pelo `sdd-converge` em 2026-11-24 (nenhuma bloqueia uma user story; a feature já cumpre a spec e os 5 contratos).
+
+- [X] T035 [Convergence · MEDIUM] Limitar o **tempo** de uma execução (origem: Constitution — Restrições do Projeto, "código de servidor DEVE caber no tempo máximo de função do plano" · plan: R-004): aceitar `prazoMs` em `executarRotina` (opcional, em `lib/rotinas/executor.js`) para parar de reivindicar itens novos ao estourar o orçamento — o que sobrar fica para a próxima execução e o resultado informa que houve corte —, passar um valor menor que o limite da função em `pages/api/rotinas/executar.js` e `pages/api/admin/rotinas/[id]/executar.js`, e definir `maxDuration` explícito para `/api/rotinas/executar` em `vercel.json` (`functions`). Teste novo (arquivo NÃO travado, ex.: `tests/rotinas/executor-prazo.test.js`) com relógio injetável/repositório em memória; os contratos travados não mudam
+- [X] T036 [Convergence · LOW] Exibir itens **ignorados** da última execução na lista de rotinas (origem: FR-017): `components/admin/RotinasTab.js` mostra hoje só "Proc. / Falhas" (`ignorados` já vem em `ultimaExecucao.ignorados` pela API)
+- [X] T037 [Convergence · LOW] Tornar a auditoria da falha definitiva independente da notificação (origem: FR-020 · FR-006): em `lib/rotinas/alertas.js` gravar `rotina.item_falha_definitiva` mesmo se o `insertMany` de `notificacoesUsuario` falhar (sem engolir o erro da notificação); teste novo com `db` fake em arquivo não travado (ex.: `tests/rotinas/alertas.test.js`)
+
+**Critério de Conclusão**: `npm test` e `npm run test:contrato` verdes com a trava íntegra; `npm run lint` sem erros e `npm run build` passando; T035 validado rodando a rotina com vários itens vencidos (ex.: `node --env-file=.env.local scripts/criar-sonda-rotina.js -1440 --quantidade=50`) e conferindo o corte por tempo e a continuação na execução seguinte.
+
+**Registro da Fase**:
+
+- Status: concluída (2026-11-24)
+- Feito: T035 — `prazoMs`/`relogio` em `executarRotina` (`lib/rotinas/executor.js`): para de reivindicar itens ao estourar o orçamento, sempre tenta o 1º item, conta o tempo de `buscarVencidos` e devolve `cortada`/`restantes` só quando corta; `PRAZO_EXECUCAO_MS = 45 s` em `lib/rotinas/dependencias.js`, usado pelas duas rotas de disparo (a automática reparte o orçamento entre as rotinas; a manual audita `cortada`); `vercel.json` com `functions` (`maxDuration: 60`) para `pages/api/rotinas/executar.js` e `pages/api/admin/rotinas/*/executar.js`; `RotinasTab` avisa quando a execução manual é cortada. T036 — lista de rotinas mostra "Proc. / Ign. / Falhas". T037 — `lib/rotinas/alertas.js` grava a auditoria `rotina.item_falha_definitiva` mesmo se a notificação falhar e relança o erro depois. Docs atualizados: `logic/executor.md` e `contracts/api-rotinas.md`
+- Contrato: `npm run test:contrato` → 5/5 verdes; `check-contract-tests.ps1 -Slug 001-rotinas-agendadas` → trava íntegra
+- Testes executados (de `J:\Cotea`): `npm test` → 8 arquivos, 43/43 (novos: `tests/rotinas/executor-prazo.test.js` 11, `tests/rotinas/alertas.test.js` 4); os 2 arquivos novos falham 7 testes contra o código antigo e passam no novo; `npm run lint` → 0 erros (5 warnings antigos); `npm run build` → exit 0 (dev server parado antes). Banco dev (critério de T035): 30 sondas vencidas há 24 h + `executarRotina` real com `prazoMs=120` → 1ª passada cortada (`restantes: 62`, 0 processados), 2ª sem prazo → 30 processados e 34 pulados, 3ª → 0 processados/64 pulados; 0 chaves duplicadas, 0 itens presos em `processando`. Medido ~74 ms por item (64 itens em 4,7 s), ou seja, 500 itens ≈ 37 s, abaixo do orçamento de 45 s e do `maxDuration` de 60 s
+- Pendências: `maxDuration` e o corte por tempo na Vercel real não foram exercitados (só local/banco dev); o valor de `maxDuration` aceito pelo plano contratado (Hobby/Pro) deve ser conferido no primeiro deploy
+
+**Sem tarefa (apenas registro)**: C-04 `unrequested` (`lib/redirecionamento.js` + `middleware.js` + `pages/auth/signin.js`, commit `1a23f1a`, registrado no backlog; `vercel.json` e `.tools/start.sh` já em T033/ADR-001) e C-05 (pausar rotina pelo painel: nenhuma FR exige; `ativa` é definido no código da rotina).

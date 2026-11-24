@@ -9,6 +9,10 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
-const eslintConfig = [...compat.extends("next/core-web-vitals")];
+const eslintConfig = [
+  // Artefatos gerados: sem isso o ESLint varre .next/ e acusa erros em código do webpack.
+  { ignores: [".next/**", "node_modules/**", "out/**", "coverage/**"] },
+  ...compat.extends("next/core-web-vitals"),
+];
 
 export default eslintConfig;

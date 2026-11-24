@@ -57,6 +57,7 @@ Variaveis usadas pelo app:
 - IDs de MongoDB aparecem tanto como `ObjectId` quanto como strings/UUIDs dependendo da colecao. Confira o schema e os handlers existentes antes de comparar ou inserir IDs.
 - Para novos handlers que dependem de sessao, prefira `getServerSession(req, res, authOptions)`.
 - Para valores monetarios, reutilize `normalizeAmount()` de `lib/wallet.js` e mantenha arredondamento para duas casas.
+- Todo lancamento de carteira passa por `obterLedger()` de `lib/ledger/servidor.js` (`registrarOperacao`, `mover`, `liquidarReserva`): nunca inserir em `walletTransactions` direto de um handler. Cada lancamento tem `categoria`, `organizacaoId` (nulo no publico) e `operacaoId` (idempotencia, `<source>:<referenceId>`); efeitos que precisam ser atomicos vao no `extra({ sessao, lancamentos })` com `{ session }`, e `logAudit` so depois do commit. Saldos sao sempre derivados em centavos (disponivel = `pessoal` menos saques em andamento). O nucleo `lib/ledger/ledger.js` (e `consistencia.js`, `migracao.js`) nao importa `lib/mongodb.js`; paginas cliente importam so `lib/ledger/rotulos.js`.
 
 ## Auth e Autorizacao
 

@@ -1,7 +1,10 @@
+import { randomUUID } from 'crypto';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
-import { insertLedgerEntry } from '../../../lib/mongodb';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
+import { obterLedger } from '../../../lib/ledger/servidor';
+import { CATEGORIAS } from '../../../lib/ledger/categorias';
+import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
 
 export default async function handler(req, res) {
@@ -24,20 +27,31 @@ export default async function handler(req, res) {
     }
 
     const wallet = await ensureWallet(userId);
-    const balances = await calculateBalances(wallet._id);
-    if (amount > balances.available) {
-      return res.status(400).json({ error: 'Saldo insuficiente' });
-    }
+    const ledger = await obterLedger();
 
-    const ledgerEntry = await insertLedgerEntry({
-      walletId: wallet._id,
-      type: 'debit',
-      amount,
-      source: 'uso_saldo',
-      referenceId: null,
-      status: 'confirmed',
-      description: description || undefined,
-    });
+    // Saldo conferido dentro da transação, com a carteira travada (FR-008).
+    let operacao;
+    try {
+      operacao = await ledger.registrarOperacao({
+        operacaoId: `uso_saldo:${randomUUID()}`,
+        source: 'uso_saldo',
+        referenceId: null,
+        descricao: description || undefined,
+        pernas: [{
+          walletId: wallet._id,
+          type: 'debit',
+          categoria: CATEGORIAS.PESSOAL,
+          valor: amount,
+          organizacaoId: null,
+        }],
+      });
+    } catch (err) {
+      if (err instanceof SaldoInsuficienteError) {
+        return res.status(400).json({ error: 'Saldo insuficiente' });
+      }
+      throw err;
+    }
+    const ledgerEntry = operacao.lancamentos[0];
 
     const updatedBalances = await calculateBalances(wallet._id);
 

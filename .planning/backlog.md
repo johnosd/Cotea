@@ -28,14 +28,8 @@ notificações, conta e auditoria (V2-22 a V2-26).
 - **V2-01** — especificada em `sdd/specs/001-rotinas-agendadas/spec.md` (ver
   `## Features`).
 
-- **V2-02 · P0 · Ledger segmentado e saldo sacável** — Especificar categorias de
-  lançamento e saldos derivados: saldo pessoal disponível, caução bloqueada
-  (por membro/grupo), valor retido de entrada/fila, recebível do dono
-  retido/liberado, valor bloqueado por disputa e taxa do Cotea; cada lançamento
-  guarda `organizacaoId` (nulo no público). Saque só consome saldo disponível.
-  Fonte: RN:46-47, 836-840, 896-897, 919-928, 1083-1095. Evidência:
-  `calculateBalances` agrega só por `type`/`status` (`lib/wallet.js:27-67`);
-  não há `organizacaoId` nem categorias em `walletTransactions`.
+- **V2-02** — especificada em `sdd/specs/002-ledger-segmentado/spec.md` (ver
+  `## Features`).
 
 - **V2-03 · P0 · Regra única de preço por vaga (taxa Cotea 5%) e capacidade
   mínima** — Calcular no servidor `valorPorVaga = round((T / C) × 1,05, 2)`,
@@ -328,6 +322,11 @@ P0 devem ser corrigidos antes de depender do checkout v2.
   `lib/invoices.js:60,77,95` leem `.value`. Efeito provável: bloqueio responde
   404 após gravar e aprovar/rejeitar saque responde 400 após confirmar o
   lançamento. Não reproduzido — achado no `sdd-plan` da 001 (2026-11-20).
+  **Parcial (002-ledger-segmentado, 2026-11-24)**: resolvido em
+  `withdraw/approve.js` e `withdraw/reject.js` (agora via `liquidarReserva` em
+  `lib/ledger/saque.js`, sem `.value`). Restam `pages/api/admin/users/[id]/block.js`
+  e `lib/invoices.js` (`markInvoicePaid`/`AwaitingTopUp`/`Refunded`; as rotas
+  caem no fallback `invoice._id`/status fixo na resposta).
 
 - **[Bug] B-07 · P1 · Hooks React chamados condicionalmente nas telas de grupo
   do admin** — `npx eslint .` acusa 21 erros em `pages/admin/grupos/[id].js`
@@ -335,10 +334,15 @@ P0 devem ser corrigidos antes de depender do checkout v2.
   duplicada na linha 381) e 1 em `pages/admin/grupos/novo.js:80` (`useEffect`
   condicional). Pode causar erro de render ao alternar estados de sessão.
   Achado no `sdd-execute` da 001 (2026-11-20); tratar via `sdd-bugfix`.
+  **Resolvido em 2026-11-24** (desvio T034 da 001, aprovado pelo usuário):
+  retornos antecipados movidos para depois dos hooks em `[id].js` e `novo.js`,
+  `className` duplicada removida; regressão confirmada em navegador (antes:
+  "Rendered more hooks" nas duas telas; depois: sem erro).
 - **[Bug] B-08 · P2 · `npm run lint` não roda** — `next lint` (Next 14) não
   reconhece o `eslint.config.mjs` em formato flat e abre um prompt interativo;
   usar `npx eslint .` até migrar o script. Achado no `sdd-execute` da 001
-  (2026-11-20).
+  (2026-11-20). **Resolvido em 2026-11-24** (T034): `lint` → `eslint .` e
+  `ignores` de `.next/` no `eslint.config.mjs`.
 
 - **[Bug] B-09 · P3 · `database/setup-indexes.js` conflita com `setupDatabase.js`**
   — cria `walletTransactions { referenceId, type, source }` sem `unique`/parcial,
@@ -404,13 +408,15 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 
 | Slug | Título | Status | Progresso | Última Atualização |
 | --- | --- | --- | --- | --- |
-| 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Em Execução | 40/45 tasks | 2026-11-20 |
+| 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
+| 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 48/51 tasks | 2026-11-24 |
 
 ## Melhorias Ad-hoc
 
 | Data | Área | Resumo |
 | --- | --- | --- |
 | 2026-11-20 | Auth/login | `/admin` não abria logado em produção: middleware passa `secureCookie` pelo protocolo (cookie `__Secure-` em HTTPS) e `/auth/signin` respeita `callbackUrl` só com caminhos internos (`lib/redirecionamento.js`, teste em `tests/redirecionamento.test.js`) |
+| 2026-11-24 | Auth/login | Logout não permitia trocar de usuário (Google reaproveitava a conta logada): `GoogleProvider` com `authorization.params.prompt = "select_account"` em `pages/api/auth/[...nextauth].js`; sem teste automatizado (fluxo OAuth), validar manualmente |
 
 ## Bugs
 

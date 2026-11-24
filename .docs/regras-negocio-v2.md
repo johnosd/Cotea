@@ -837,7 +837,10 @@ Regras:
 
 - Debitos confirmados reduzem saldo total.
 - Debitos bloqueados reduzem saldo disponivel, mas nao saldo total ate serem confirmados.
-- Saldo disponivel = saldo confirmado menos valores bloqueados.
+- Todo lancamento tem categoria de saldo (`pessoal`, `caucao`, `retido_entrada`, `recebivel_retido`, `disputa`, `receita_taxa`) e contexto (`organizacaoId`, nulo no publico; `grupoId`/`participacaoId` quando houver) (feature 002).
+- Saldo disponivel (= sacavel) = saldo `pessoal` confirmado menos saques em andamento (debitos `blocked` de `pessoal`). Caucao, retido, a receber e disputa nunca entram no disponivel.
+- Saldos sao sempre derivados dos lancamentos, calculados em centavos inteiros.
+- Todo debito passa pelo nucleo do ledger (`lib/ledger/`), que confere o saldo da categoria dentro da mesma transacao, com a carteira travada: requisicoes simultaneas nunca deixam saldo negativo.
 
 ## Fluxo 17: faturas e pagamentos de assinatura
 
@@ -873,9 +876,9 @@ Fluxo atual:
 
 1. Usuario acessa "Sacar".
 2. Informa valor e CPF.
-3. Sistema valida saldo disponivel.
+3. Sistema valida saldo disponivel dentro da mesma transacao que reserva o valor (carteira travada; dois pedidos simultaneos acima do disponivel: so um passa).
 4. Sistema cria withdrawal com status `requested`.
-5. Sistema cria debito no ledger com status `blocked`.
+5. Sistema cria debito no ledger com status `blocked` na categoria `pessoal` ("saque em andamento"), na mesma operacao do withdrawal.
 6. Financeiro/admin lista saques.
 7. Financeiro/admin aprova ou rejeita.
 8. Ao aprovar:
@@ -900,7 +903,7 @@ Gap de implementacao:
 
 - Nao ha medicao do prazo de 2 dias uteis nem piso de R$ 5,00 aplicado no codigo.
 - Cobranca da taxa do provedor de pagamento (Mercado Pago) no saque ainda nao implementada.
-- Nao ha separacao de saldo de repasse do dono versus saldo comum.
+- Resolvido (feature 002): o saque so usa o disponivel (saldo `pessoal` menos saques em andamento); caucao, retido, a receber e disputa ficam fora. O financeiro/admin ve o saldo segmentado do usuario na tela de saques.
 
 ## Fluxo 19: repasse ao dono do grupo
 
@@ -924,8 +927,9 @@ Regras:
 
 Gap de implementacao:
 
-- Nao ha fluxo de recebiveis/repasse ao dono implementado.
-- Wallet atual e generica e nao diferencia saldo pessoal, caucao, repasse liberado e repasse retido.
+- Nao ha fluxo de recebiveis/repasse ao dono implementado: as categorias `recebivel_retido` e `disputa` e a movimentacao entre categorias (`mover`, mantendo grupo e participacao) ja existem (feature 002), mas nenhum fluxo gera recebiveis ainda (V2-11/V2-15).
+- Recebivel liberado vira saldo `pessoal` comum (pode pagar grupos ou ser sacado).
+- A conta da plataforma (`wallets._id = 'plataforma'`, categoria `receita_taxa`) existe e comeca vazia; nenhum fluxo grava taxa do Cotea ainda (V2-03/V2-11).
 
 ## Fluxo 20: fila de espera
 

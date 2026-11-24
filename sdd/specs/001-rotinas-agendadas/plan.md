@@ -214,12 +214,13 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | Área | Estado |
 | --- | --- |
 | Persistência | 4 coleções + índices aplicados no banco de desenvolvimento (`setupDatabase.js`) |
-| Executor / repositório Mongo | prontos; contratos 3/3; concorrência real validada (quickstart 4) |
+| Executor / repositório Mongo | prontos; contratos 3/3; concorrência real validada (quickstart 4); orçamento de tempo `prazoMs` (45 s) com corte e continuação validados no banco dev (T035) |
 | Calendário | pronto; contratos 2/2 |
 | Disparo | `/api/rotinas/executar` validado (quickstart 1–6) |
-| Painel / datas extras | implementados; validação com sessão real (quickstart 7–11) pendente com o usuário |
-| Testes | Vitest 25/25 (contratos 5/5, trava íntegra) |
-| Gates | build ok; lint do projeto bloqueado por B-07/B-08 (pré-existentes); arquivos da feature sem erros de ESLint |
+| Painel / datas extras | implementados; validados com login Google real (2026-11-24: quickstart 7–10 admin 15/15; passo 11 com conta `user` 9/9 com 403); US4-AC1 em ambiente real e `support`/financeiro em runtime aceitos pelo usuário como cobertos por contrato e leitura de código |
+| Testes | Vitest 43/43 (contratos 5/5, trava íntegra), conferido em 2026-11-24 após a Fase 8 |
+| Gates | build ok (exit 0); `npm run lint` 0 erros (5 warnings pré-existentes) |
+| Convergência | Fase 8 (T035–T037) concluída; falta rodar `sdd-converge` de novo |
 | Docs | `CLAUDE.md`, `AGENTS.md`, `.docs/regras-negocio-v2.md` atualizados |
 
 ## Riscos e Decisões
@@ -232,13 +233,14 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | ID | Risco/Decisão | Impacto | Mitigação/Encaminhamento |
 | --- | --- | --- | --- |
 | R-001 | Plataforma de deploy e agendador indefinidos | FR-002 (até 1h) depende de alguém chamar a rota | Resolvido: ADR-001 — Vercel (região `gru1`) com Vercel Schedules chamando `/api/rotinas/executar` a cada 15 min (Hobby: até ~30 min de atraso com jitter; Pro obrigatório antes do primeiro pagamento real, jitter 5). Rota passa a aceitar `CRON_SECRET` (T033) |
-| R-002 | Lease (10 min) expira durante um processamento longo e outra execução assume o item | Efeito duplicado | Lease maior que o timeout serverless típico; `processarItem` idempotente pelo evento (R-006) |
+| R-002 | Lease (10 min) expira durante um processamento longo e outra execução assume o item | Efeito duplicado | Resolvido: lease de 10 min contra `maxDuration` de 60 s e orçamento de 45 s por execução (T035), então uma função cortada pelo timeout nunca tem o lease vigente por mais que 10 min; `processarItem` idempotente pelo evento segue exigido das features consumidoras (R-006) |
 | R-003 | Contratos usam o repositório em memória; a atomicidade real do Mongo não tem teste automatizado | Divergência fake × Mongo passaria despercebida | Resolvido: quickstart passo 4 no banco de desenvolvimento — 20 sondas, 2 chamadas simultâneas, 10 + 10 processados, 0 duplicatas (2026-11-20) |
-| R-004 | Tempo limite serverless com muitos itens vencidos | Execução cortada no meio | `limite` de 500 itens; itens restantes na próxima execução; item interrompido volta após o lease |
+| R-004 | Tempo limite serverless com muitos itens vencidos | Execução cortada no meio | `limite` de 500 itens; itens restantes na próxima execução; item interrompido volta após o lease. Resolvido (2026-11-24, T035): orçamento de tempo `prazoMs` = 45 s no executor + `maxDuration` 60 s em `vercel.json`; corte e continuação validados no banco dev (a validação na Vercel real fica para o 1º deploy) |
 | R-005 | Vitest no Windows falha com `Cannot read properties of undefined (reading 'config')` quando o caminho usa `j:` minúsculo | Falso vermelho / suíte não roda | Rodar de `J:\Cotea` (PowerShell `Set-Location J:\Cotea`) |
 | R-006 | Processo morre depois do efeito e antes de `concluirItem` | Item reprocessado | Exigência às features consumidoras: efeito idempotente (ex.: índice único do ledger) |
 | R-007 | `findOneAndUpdate` no driver 6.16 retorna o documento, não `{ value }`; handlers antigos usam `.value` | Copiar o padrão antigo quebra o repositório | `logic/executor.md` alerta; suspeita de bug existente registrada no backlog |
-| R-008 | Gates de lint/build do projeto falham por problemas PRÉ-EXISTENTES fora desta feature: `next lint` (Next 14) não reconhece o `eslint.config.mjs` flat e abre prompt; `npx eslint .` acusa 22 erros em `pages/admin/grupos/[id].js` e `novo.js` (hooks condicionais, prop duplicada); `npm run build` falha em `pages/api/admin/users/[id]/block.js` (import `'../../auth/[...nextauth]'` inexistente — o correto é `'../../../auth/…'`, como em `role.js`) | Checklist de Release não fecha (build/lint) | Resolvido parcialmente: usuário aprovou corrigir o import de `block.js` (T032) — build passa; erros de lint viraram B-07/B-08 no backlog; conflito do `setup-indexes.js` virou B-09 |
+| R-008 | Gates de lint/build do projeto falham por problemas PRÉ-EXISTENTES fora desta feature: `next lint` (Next 14) não reconhece o `eslint.config.mjs` flat e abre prompt; `npx eslint .` acusa 22 erros em `pages/admin/grupos/[id].js` e `novo.js` (hooks condicionais, prop duplicada); `npm run build` falha em `pages/api/admin/users/[id]/block.js` (import `'../../auth/[...nextauth]'` inexistente — o correto é `'../../../auth/…'`, como em `role.js`) | Checklist de Release não fecha (build/lint) | Resolvido parcialmente: usuário aprovou corrigir o import de `block.js` (T032) — build passa; erros de lint viraram B-07/B-08 no backlog; conflito do `setup-indexes.js` virou B-09. Resolvido (2026-11-24): B-07/B-08 corrigidos por decisão do usuário (R-009) — lint e build passam |
+| R-009 | Desvio T034 (fora do escopo, aprovado): hooks React depois de `return` antecipado em `pages/admin/grupos/[id].js` e `novo.js` quebravam as duas telas com "Rendered more hooks" (bug real, não só aviso de lint); `next lint` incompatível com config flat e `eslint` varrendo `.next/` | Telas de grupo do admin inutilizáveis; `npm run lint` não rodava | Resolvido: retornos movidos para depois dos hooks; prop `className` duplicada removida (a 1ª já era ignorada); `lint` → `eslint .` com `ignores`; regressão confirmada com Playwright (antigo FAIL 2/2, novo PASS 2/2) |
 
 ## Execution Notes
 
@@ -259,16 +261,23 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | 2026-11-20 | Fase 7 Polish (parcial) | Docs (`CLAUDE.md`, `AGENTS.md`, regra de prazos em `.docs/regras-negocio-v2.md`), R-001 encaminhado; suíte 25/25 | Build/lint bloqueados por problemas pré-existentes (R-008); quickstart pendente |
 | 2026-11-20 | Fase 7 Polish | T032 (import `block.js`), build ok, banco configurado, quickstart 1–6 ok; B-07/B-08/B-09 no backlog | Quickstart 7–11 com login do usuário |
 | 2026-11-20 | ADR-001/002 | Plataforma (Vercel gru1), agendador (Schedules 15 min), plano (Hobby→Pro), e-mail (Gmail até o lançamento); constitution 1.1.0; T033 | Quickstart 7–11 |
+| 2026-11-22 | Fase 7 Polish (T031) | Login Google validado com Playwright até a tela do Google (8/8: `callbackUrl`, `redirect_uri`, escopo); login manual na janela não concluído, quickstart 7–11 não rodou | Alguém logar como admin na janela; passo 11 exige 2ª conta sem role admin |
+| 2026-11-24 | Fase 7 Polish (T031) | Login Google real (admin) + quickstart 7–10 pela UI com Playwright: 15/15; `callbackUrl` respeitado; auditoria conferida | Passo 11 (2ª conta sem role admin) e US4-AC1 no ambiente real |
+| 2026-11-24 | Fase 7 Polish (T031) | Passo 11 com login Google real e conta `user`: aba ausente e 6 rotas → 403 (9/9) | US4-AC1 no ambiente real; `support`/financeiro só por leitura de código |
+| 2026-11-24 | Fase 7 Polish (fechamento) | Usuário aceitou US4-AC1 em ambiente real e 403 de `support`/financeiro como cobertos; T031, Fases 5/6 e quickstart marcados; suíte 28/28, contratos 5/5, trava íntegra | Só resta o item de lint do Checklist (B-07/B-08 pré-existentes) |
+| 2026-11-24 | Fase 7 Polish (T034) | Desvio aprovado: B-07/B-08 resolvidos (hooks nas telas de grupo, script `lint`, `ignores`); lint 0 erros, build ok, suíte 28/28, contratos 5/5, trava íntegra; regressão Playwright antigo FAIL 2/2 → novo PASS 2/2 | — |
+| 2026-11-24 | Fase 8 Convergence (T035–T037) | Orçamento de tempo do executor (`prazoMs` 45 s, `maxDuration` 60 s), ignorados na lista do painel, auditoria da falha definitiva independente da notificação; suíte 43/43, contratos 5/5, trava íntegra, lint 0 erros, build ok; corte por tempo validado no banco dev | Validar `maxDuration` na Vercel real no 1º deploy |
 
-**PRÓXIMO**: usuário executa quickstart 7–11 no `/admin?tab=rotinas` (login Google, admin e um usuário support); depois marcar T031 e os itens de Fase 5/6 e rodar `sdd-converge`
+**PRÓXIMO**: rodar `sdd-converge` de novo; se convergir limpo, `spec.md` vira Convergida e o plan ganha `## Resultado Final`
 
 ## Arquivos Principais
 
 <!-- Sobrescrita a cada checkpoint — foco da etapa atual, não a árvore inteira. -->
 
-- `components/admin/RotinasTab.js`, `components/admin/CalendarioDatasExtras.js` (validação manual pendente)
-- `pages/api/admin/rotinas/*`, `pages/api/admin/calendario.js`
-- `sdd/specs/001-rotinas-agendadas/quickstart.md` passos 7–11
+- `lib/rotinas/executor.js` (`prazoMs`/`relogio`), `lib/rotinas/dependencias.js` (`PRAZO_EXECUCAO_MS`), `lib/rotinas/alertas.js`
+- `pages/api/rotinas/executar.js`, `pages/api/admin/rotinas/[id]/executar.js`, `vercel.json` (`functions.maxDuration`)
+- `components/admin/RotinasTab.js` (ignorados na lista; aviso de corte por tempo)
+- `tests/rotinas/executor-prazo.test.js`, `tests/rotinas/alertas.test.js`; `logic/executor.md`, `contracts/api-rotinas.md`
 
 ## Cuidados para Retomada
 
@@ -278,6 +287,36 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 - `database/setupDatabase.js` aplica `collMod` em TODAS as coleções: só rodar com autorização do usuário.
 - Heredoc no Git Bash comeu `\d` num `pattern` de JSON Schema; o schema usa `[0-9]`.
 - `lib/rotinas/autorizacao.js` importa `authOptions` de `pages/api/auth/[...nextauth]` (lib → pages); se isso virar problema de build, mover a guarda para cada rota.
-- `npm run lint` abre prompt interativo (Next 14 não lê config flat); use `npx eslint <arquivos>` para checar os arquivos da feature.
+- `npm run lint` agora é `eslint .` (T034); o `next lint` do Next 14 não lê config flat. O `eslint.config.mjs` ignora `.next/`; pare o dev server antes de `npm run build` (mesma pasta `.next`).
 - `database/setup-indexes.js` aborta em `walletTransactions` (B-09) antes de chegar aos índices de rotinas; use `node database/setupDatabase.js`, que cria os mesmos índices.
 - Para o quickstart, o segredo local foi passado só ao processo do dev server (`$env:ROTINAS_SECRET`), sem gravar no `.env.local`.
+- `vercel.json` `functions` usa globs de arquivo (`pages/api/admin/rotinas/*/executar.js` cobre a rota dinâmica `[id]` sem escapar colchetes); `schedules` segue o formato do ADR-001. O corte por tempo só aparece em lotes grandes (~74 ms/item no banco dev): para reproduzir, `node --env-file=.env.local scripts/criar-sonda-rotina.js -1440 --quantidade=N` e rodar o executor com `prazoMs` pequeno.
+
+## Resultado Final
+
+<!-- Anexado pelo sdd-converge em 2026-11-24, após convergir sem achados acionáveis. -->
+
+**O que foi construído** (FR-001..FR-020, SC-001..SC-006 e US1..US4 confirmados no código, nos contratos e no quickstart 1–11 com login Google real):
+
+- **Executor idempotente** (`lib/rotinas/executor.js`, puro, repositório injetado): idempotência por `rotinaId + chave` com índice único e lease de 10 min, falha isolada por item, até 5 tentativas, falha definitiva com alerta uma única vez, itens "ignorados", reexecução manual que zera as tentativas e orçamento de tempo `prazoMs`. Repositório Mongo com a mesma interface do fake travado (`lib/rotinas/repositorio-mongo.js`).
+- **Disparo** `GET|POST /api/rotinas/executar` com `Bearer CRON_SECRET` (alternativa `ROTINAS_SECRET`), `timingSafeEqual`, 401/404/405/503, liberada só ela em `PUBLIC_PATHS`; `vercel.json` com região `gru1`, schedule a cada 15 min e `maxDuration` de 60 s.
+- **Rotina de saúde** (batimento horário + sondas de teste) e `scripts/criar-sonda-rotina.js`.
+- **Calendário puro** (`lib/calendario.js`): dias corridos e úteis no horário de Brasília sem fixar -03:00, feriados fixos + Sexta-feira Santa, datas extras recebidas por parâmetro; `lib/calendario-dados.js` para leitura e validação.
+- **Painel** `/admin?tab=rotinas` (só `admin`, checagem no servidor): lista, detalhe, histórico, itens em falha, "Executar agora", "Reexecutar" e datas extras com auditoria (`rotina.executada_manual`, `rotina.item_reexecutado`, `rotina.item_falha_definitiva`, `calendario.data_extra_incluida/_removida`).
+- **Persistência**: 4 coleções com schema, índices e TTL (90 d de execuções, 7 d de sondas) em `setupDatabase.js` e `setup-indexes.js`.
+- **Qualidade**: 49 tasks; contratos 5/5 com a trava íntegra; Vitest 43/43; `npm run lint` 0 erros; `npm run build` ok.
+
+**Desvios em relação ao plano original** (todos registrados nas Execution Notes e em Riscos):
+
+- ADR-001/002 definiram Vercel + Schedules; a rota passou a aceitar `CRON_SECRET` (T033) e a constitution foi para 1.1.0.
+- T032 e T034 (desvios aprovados pelo usuário): import quebrado em `pages/api/admin/users/[id]/block.js`; B-07 (hooks React depois de retorno antecipado em `pages/admin/grupos/[id].js` e `novo.js`, que derrubava as telas) e B-08 (`lint` → `eslint .` com `ignores` de `.next/`).
+- Fase 8 (convergência): T035 orçamento de tempo (45 s) e `maxDuration` 60 s; T036 ignorados na lista do painel; T037 auditoria da falha definitiva independente da notificação.
+- Extras não previstos nas tasks originais: `lib/rotinas/autorizacao.js`, `consultas.js`, `dependencias.js`.
+- Batimento da rotina de saúde usa a hora em UTC (só precisa ser único por hora); `processarItem` da sonda relê a sonda do banco (revalidação, FR-007).
+- Aceitos pelo usuário: US4-AC1 no ambiente real (coberta pelo contrato automatizado) e 403 em runtime de `support`/financeiro (coberto pela guarda `exigirAdminRotinas`; só `user` foi exercitado).
+
+**Pontos que ficaram em aberto fora desta feature**:
+
+- Validar `maxDuration` e o corte por tempo na Vercel real no primeiro deploy (Hobby: atraso de até ~30 min com jitter; Pro obrigatório antes do primeiro pagamento real, R-001).
+- Features consumidoras devem tornar o efeito idempotente pelo próprio evento (R-006) e registrar a própria rotina em `lib/rotinas/registro.js`.
+- Itens fora do escopo, registrados no backlog: B-09 (`setup-indexes.js` x `setupDatabase.js`), e a suspeita sobre `.value` do `findOneAndUpdate` em handlers antigos (R-007). O login que respeita `callbackUrl` (`lib/redirecionamento.js`, commit `1a23f1a`) não pertence a esta feature.

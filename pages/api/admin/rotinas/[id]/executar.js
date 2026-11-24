@@ -5,7 +5,7 @@ import { getClientIp } from '../../../../../lib/ratelimit';
 import { exigirAdminRotinas } from '../../../../../lib/rotinas/autorizacao';
 import { obterRotina } from '../../../../../lib/rotinas/registro';
 import { executarRotina } from '../../../../../lib/rotinas/executor';
-import { montarDependencias } from '../../../../../lib/rotinas/dependencias';
+import { montarDependencias, PRAZO_EXECUCAO_MS } from '../../../../../lib/rotinas/dependencias';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     const db = await getDb();
     const deps = await montarDependencias(db);
-    const resultado = await executarRotina(rotina, { ...deps, origem: 'manual', autorId: auth.userId });
+    const resultado = await executarRotina(rotina, { ...deps, origem: 'manual', autorId: auth.userId, prazoMs: PRAZO_EXECUCAO_MS });
 
     await logAudit({
       action: 'rotina.executada_manual',
@@ -29,7 +29,13 @@ export default async function handler(req, res) {
       actorEmail: auth.session.user.email,
       targetId: rotina.id,
       targetCollection: 'rotinaExecucoes',
-      details: { execucaoId: resultado.execucaoId, resultado: resultado.resultado, processados: resultado.processados, falhas: resultado.falhas },
+      details: {
+        execucaoId: resultado.execucaoId,
+        resultado: resultado.resultado,
+        processados: resultado.processados,
+        falhas: resultado.falhas,
+        cortada: Boolean(resultado.cortada),
+      },
       ip: getClientIp(req),
     });
 

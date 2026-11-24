@@ -46,6 +46,15 @@ async function createIndexes() {
   // walletTransactions — suporta busca de idempotência por referenceId+source
   await db.collection('walletTransactions').createIndex({ referenceId: 1, type: 1, source: 1 });
 
+  // walletTransactions — idempotência por operação do ledger segmentado (002, D-05)
+  await db.collection('walletTransactions').createIndex(
+    { operacaoId: 1, walletId: 1, categoria: 1, type: 1 },
+    { unique: true, partialFilterExpression: { operacaoId: { $type: 'string' } } }
+  );
+
+  // walletTransactions — saldo por categoria e rotina de consistência (002)
+  await db.collection('walletTransactions').createIndex({ walletId: 1, categoria: 1, status: 1 });
+
   // wallets — suporta busca de carteira por userId
   await db.collection('wallets').createIndex({ userId: 1 }, { unique: true });
 

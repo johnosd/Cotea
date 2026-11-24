@@ -101,6 +101,20 @@ async function run() {
     await createCollection("wallets", walletsSchema);
     await db.collection("wallets").createIndex({ userId: 1 }, { unique: true });
     await db.collection("wallets").createIndex({ status: 1 });
+    // Conta da plataforma (002-ledger-segmentado, D-07): userId sintetico porque
+    // wallets.userId tem indice unico nao esparso.
+    await db.collection("wallets").updateOne(
+      { _id: "plataforma" },
+      {
+        $setOnInsert: {
+          userId: "cotea:plataforma",
+          tipo: "plataforma",
+          status: "active",
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true }
+    );
 
     // 10) Payments (PIX / Mercado Pago)
     const paymentsSchema = await loadSchema("payments.schema.json");
@@ -127,6 +141,12 @@ async function run() {
       { referenceId: 1, type: 1, source: 1 },
       { unique: true, partialFilterExpression: { referenceId: { $type: "string" } } }
     );
+    // 002-ledger-segmentado: idempotencia por operacao (D-05) e saldo por categoria
+    await db.collection("walletTransactions").createIndex(
+      { operacaoId: 1, walletId: 1, categoria: 1, type: 1 },
+      { unique: true, partialFilterExpression: { operacaoId: { $type: "string" } } }
+    );
+    await db.collection("walletTransactions").createIndex({ walletId: 1, categoria: 1, status: 1 });
 
     // 12) Withdrawals
     const withdrawalsSchema = await loadSchema("withdrawals.schema.json");

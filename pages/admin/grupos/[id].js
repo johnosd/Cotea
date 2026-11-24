@@ -90,13 +90,6 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
     }
   }, [status, router, callbackPath]);
 
-  if (status === 'loading') {
-    return <div className="pt-[100px] p-6">Carregando sessao...</div>;
-  }
-
-  if (status === 'unauthenticated') {
-    return <div className="pt-[100px] p-6">Redirecionando para login...</div>;
-  }
   const isSystemAdmin = session?.user?.systemRole === 'admin';
   const canViewInternalNotes = session?.user?.systemRole !== 'user';
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -147,6 +140,15 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
     const calculado = totalNumero / vagasMembros;
     setValorPorVaga(calculado.toFixed(2));
   }, [valorTotal, capacidadeTotal, vagasReservadasAdmin]);
+
+  // Retornos antecipados SEMPRE depois de todos os hooks (rules-of-hooks, B-07).
+  if (status === 'loading') {
+    return <div className="pt-[100px] p-6">Carregando sessao...</div>;
+  }
+
+  if (status === 'unauthenticated') {
+    return <div className="pt-[100px] p-6">Redirecionando para login...</div>;
+  }
 
   const validarUrl = (url) => /^https?:\/\/[\w.-]+(\/[\w\-./?%&=]*)?$/.test((url || '').trim());
 
@@ -374,7 +376,6 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
                       aria-invalid={!!errors.nome}
                       value={nome}
                       onChange={(e) => setNome(e.target.value)}
-                      className={`${inputBaseClass} ${errors.nome ? 'border-red-500' : 'border-gray-200'}`}
                       maxLength={80}
                     readOnly
                     disabled

@@ -70,13 +70,6 @@ export default function NovoGrupo() {
     }
   }, [sessionStatus, router]);
 
-  if (sessionStatus === 'loading') {
-    return <div className="pt-[100px] p-6">Carregando sessao...</div>;
-  }
-
-  if (sessionStatus === 'unauthenticated') {
-    return <div className="pt-[100px] p-6">Redirecionando para login...</div>;
-  }
   useEffect(() => {
     if (!valorTotal) {
       setValorPorVaga('');
@@ -96,6 +89,15 @@ export default function NovoGrupo() {
     }
     setValorPorVaga(calculado.toFixed(2));
   }, [valorTotal, capacidadeTotal]);
+
+  // Retornos antecipados SEMPRE depois de todos os hooks (rules-of-hooks, B-07).
+  if (sessionStatus === 'loading') {
+    return <div className="pt-[100px] p-6">Carregando sessao...</div>;
+  }
+
+  if (sessionStatus === 'unauthenticated') {
+    return <div className="pt-[100px] p-6">Redirecionando para login...</div>;
+  }
 
   const validarUrl = (url) => /^https?:\/\/[\w.-]+(\/[\w\-./?%&=]*)?$/.test(url.trim());
 

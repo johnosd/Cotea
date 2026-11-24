@@ -205,7 +205,10 @@ export default function RotinasTab({ allowed }) {
         await fetch(`/api/admin/rotinas/${encodeURIComponent(id)}/executar`, { method: 'POST' }),
         'Erro ao executar rotina'
       );
-      setMensagem(`Rotina ${id}: ${data.resultado} — ${data.processados} processados, ${data.falhas} falhas, ${data.pulados} pulados.`);
+      setMensagem(
+        `Rotina ${id}: ${data.resultado} — ${data.processados} processados, ${data.falhas} falhas, ${data.pulados} pulados.` +
+          (data.cortada ? ` Interrompida por tempo: ${data.restantes} item(ns) ficam para a proxima execucao.` : '')
+      );
       await carregar();
       setVersaoDetalhe((v) => v + 1);
     } catch (err) {
@@ -241,7 +244,7 @@ export default function RotinasTab({ allowed }) {
               <th className="px-3 py-2">Ultima execucao</th>
               <th className="px-3 py-2">Resultado</th>
               <th className="px-3 py-2">Duracao</th>
-              <th className="px-3 py-2">Proc. / Falhas</th>
+              <th className="px-3 py-2">Proc. / Ign. / Falhas</th>
               <th className="px-3 py-2">Itens em falha</th>
               <th className="px-3 py-2" />
             </tr>
@@ -260,7 +263,9 @@ export default function RotinasTab({ allowed }) {
                 <td className="px-3 py-2">{r.ultimaExecucao ? <BadgeResultado resultado={r.ultimaExecucao.resultado} /> : '-'}</td>
                 <td className="px-3 py-2">{formatarDuracao(r.ultimaExecucao?.duracaoMs)}</td>
                 <td className="px-3 py-2">
-                  {r.ultimaExecucao ? `${r.ultimaExecucao.processados} / ${r.ultimaExecucao.falhas}` : '-'}
+                  {r.ultimaExecucao
+                    ? `${r.ultimaExecucao.processados} / ${r.ultimaExecucao.ignorados} / ${r.ultimaExecucao.falhas}`
+                    : '-'}
                 </td>
                 <td className="px-3 py-2">
                   <span className={r.itensFalhaDefinitiva > 0 ? 'text-red-700 font-semibold' : ''}>

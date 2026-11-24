@@ -1,8 +1,9 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
-import { getDb, insertLedgerEntry } from '../../../lib/mongodb';
 import { INVOICE_STATUS, getInvoiceById, markInvoiceRefunded } from '../../../lib/invoices';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
+import { obterLedger } from '../../../lib/ledger/servidor';
+import { CATEGORIAS } from '../../../lib/ledger/categorias';
 import { logAudit } from '../../../lib/audit';
 
 export default async function handler(req, res) {
@@ -43,47 +44,37 @@ export default async function handler(req, res) {
 
     const wallet = await ensureWallet(userId);
 
-    // Cria credito de estorno idempotente por referenceId+source
-    const db = await getDb();
-    const existingCredit = await db.collection('walletTransactions').findOne({
-      referenceId: invoiceId,
-      type: 'credit',
+    // Crédito pessoal de estorno idempotente por operacaoId (D-05), com a
+    // fatura marcada estornada na MESMA transação (D-08).
+    const ledger = await obterLedger();
+    const operacao = await ledger.registrarOperacao({
+      operacaoId: `estorno_assinatura:${invoiceId}`,
       source: 'estorno_assinatura',
+      referenceId: invoiceId,
+      descricao: `Estorno fatura ${invoiceId}`,
+      pernas: [{
+        walletId: wallet._id,
+        type: 'credit',
+        categoria: CATEGORIAS.PESSOAL,
+        valor,
+        grupoId: invoice.grupoId ? String(invoice.grupoId) : null,
+        organizacaoId: null,
+      }],
+      extra: ({ sessao, lancamentos }) => markInvoiceRefunded({
+        invoiceId,
+        walletId: wallet._id,
+        ledgerId: lancamentos[0]._id,
+        refundedAt: new Date(),
+      }, { session: sessao }),
     });
-    let creditEntry = existingCredit;
+    const creditEntry = operacao.lancamentos[0];
 
-    if (!creditEntry) {
-      try {
-        creditEntry = await insertLedgerEntry({
-          walletId: wallet._id,
-          type: 'credit',
-          amount: valor,
-          source: 'estorno_assinatura',
-          referenceId: invoiceId,
-          status: 'confirmed',
-          description: `Estorno fatura ${invoiceId}`,
-        });
-      } catch (err) {
-        if (err?.code === 11000) {
-          creditEntry = await db.collection('walletTransactions').findOne({
-            referenceId: invoiceId,
-            type: 'credit',
-            source: 'estorno_assinatura',
-          });
-        } else {
-          throw err;
-        }
-      }
+    if (!operacao.criada) {
+      // Crédito já existia: só alinha a fatura (sem novo lançamento).
+      await markInvoiceRefunded({ invoiceId, walletId: wallet._id, ledgerId: creditEntry._id });
     }
-
+    const refunded = operacao.resultadoExtra;
     const balances = await calculateBalances(wallet._id);
-    const refundedAt = new Date();
-    const refunded = await markInvoiceRefunded({
-      invoiceId,
-      walletId: wallet._id,
-      ledgerId: creditEntry._id,
-      refundedAt,
-    });
 
     await logAudit({
       action: 'assinatura.refunded',

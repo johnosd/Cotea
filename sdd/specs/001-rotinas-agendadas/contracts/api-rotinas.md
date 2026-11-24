@@ -17,7 +17,7 @@ português. IDs de usuário comparados como string.
 
 | Status | Corpo |
 | --- | --- |
-| 200 | `{ execucoes: [{ rotinaId, execucaoId, resultado, processados, ignorados, falhas, pulados }] }` |
+| 200 | `{ execucoes: [{ rotinaId, execucaoId, resultado, processados, ignorados, falhas, pulados, cortada?, restantes? }] }` — `cortada: true` e `restantes` só aparecem quando o orçamento de tempo (45 s) interrompeu a passada; os itens restantes saem na próxima execução |
 | 401 | `{ error: 'Nao autorizado' }` (segredo ausente/errado) |
 | 404 | `{ error: 'Rotina nao encontrada' }` (`?rotina=` inválido) |
 | 405 | método diferente de GET/POST |

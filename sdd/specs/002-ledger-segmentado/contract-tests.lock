@@ -1,0 +1,17 @@
+{
+  "feature": "002-ledger-segmentado",
+  "lockedAt": "2026-11-24 10:56",
+  "total": 5,
+  "files": [
+    {
+      "path": "tests/contract/002-ledger-segmentado.contract.test.js",
+      "sha256": "da865ffede2e2760bcf3cfc57ea8ee30e7dcd2d4e22e773411bc958f46790ba5",
+      "tests": 5
+    },
+    {
+      "path": "tests/helpers/ledger-memoria.js",
+      "sha256": "8ef8784c364255085c171263e52a29bfb8aa96539c644eb27a2bf52091c52563",
+      "tests": 0
+    }
+  ]
+}
