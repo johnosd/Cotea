@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Header from '../../../components/Header';
+import PrevisaoPreco from '../../../components/PrevisaoPreco';
+import { calcularPrecoVaga, MOTIVOS_PRECO_INVALIDO, VAGAS_DONO } from '../../../lib/preco';
 
 export default function NovoGrupo() {
   const router = useRouter();
@@ -15,7 +17,6 @@ export default function NovoGrupo() {
   const [uploadingImg, setUploadingImg] = useState(false);
   const [imageKey, setImageKey] = useState('');
   const [valorTotal, setValorTotal] = useState('');
-  const [valorPorVaga, setValorPorVaga] = useState('');
   const [descricao, setDescricao] = useState('');
   const [capacidadeTotal, setCapacidadeTotal] = useState('2');
   const [subtitulo, setSubtitulo] = useState('');
@@ -56,11 +57,15 @@ export default function NovoGrupo() {
   const [criando, setCriando] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const VAGAS_RESERVADAS_ADMIN = 1;
+  // Mesma regra que o servidor usa para gravar (lib/preco.js, 003-preco-por-vaga).
+  const preco = useMemo(
+    () => calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal }),
+    [valorTotal, capacidadeTotal]
+  );
   const vagasDisponiveis = useMemo(() => {
     const cap = Number(capacidadeTotal);
-    if (Number.isNaN(cap)) return 0;
-    return Math.max(cap - VAGAS_RESERVADAS_ADMIN, 0);
+    if (!Number.isInteger(cap)) return 0;
+    return Math.max(cap - VAGAS_DONO, 0);
   }, [capacidadeTotal]);
 
   useEffect(() => {
@@ -69,26 +74,6 @@ export default function NovoGrupo() {
       router.replace(`/auth/signin?callbackUrl=${encodeURIComponent('/admin/grupos/novo')}`);
     }
   }, [sessionStatus, router]);
-
-  useEffect(() => {
-    if (!valorTotal) {
-      setValorPorVaga('');
-      return;
-    }
-    const totalNumero = Number(valorTotal);
-    const capacidadeNumero = Number(capacidadeTotal);
-    const divisor = Number.isNaN(capacidadeNumero) ? 0 : capacidadeNumero;
-    if (Number.isNaN(totalNumero) || totalNumero <= 0 || divisor <= 0) {
-      setValorPorVaga('');
-      return;
-    }
-    const calculado = totalNumero / divisor;
-    if (!Number.isFinite(calculado) || calculado <= 0) {
-      setValorPorVaga('');
-      return;
-    }
-    setValorPorVaga(calculado.toFixed(2));
-  }, [valorTotal, capacidadeTotal]);
 
   // Retornos antecipados SEMPRE depois de todos os hooks (rules-of-hooks, B-07).
   if (sessionStatus === 'loading') {
@@ -105,18 +90,9 @@ export default function NovoGrupo() {
     const novoErrors = {};
     if (!nome.trim()) novoErrors.nome = 'Nome e obrigatorio.';
     if (!categoria) novoErrors.categoria = 'Escolha uma categoria.';
-    const valorTotalNumero = Number(valorTotal);
-    if (!valorTotal || Number.isNaN(valorTotalNumero) || valorTotalNumero <= 0)
-      novoErrors.valorTotal = 'Informe o valor total da assinatura.';
-    const cap = Number(capacidadeTotal);
-    if (Number.isNaN(cap)) {
-      novoErrors.capacidadeTotal = 'Capacidade deve ser numero.';
-    } else if (cap < 2) {
-      novoErrors.capacidadeTotal = 'Capacidade minima de 2 (1 admin + 1 membro).';
-    }
-    const valorPorVagaNumero = Number(valorPorVaga);
-    if (!valorPorVaga || Number.isNaN(valorPorVagaNumero) || valorPorVagaNumero <= 0) {
-      novoErrors.valorPorVaga = 'Valor por vaga e calculado (valor total / capacidade total). Confira valor total e capacidade.';
+    if (!preco.valido) {
+      if (preco.motivo === MOTIVOS_PRECO_INVALIDO.CAPACIDADE_MINIMA) novoErrors.capacidadeTotal = preco.mensagem;
+      else novoErrors.valorTotal = preco.mensagem;
     }
     if (!linkOficial || !validarUrl(linkOficial)) novoErrors.linkOficial = 'Informe uma URL valida (http/https).';
     const beneficiosValidos = beneficios.some((b) => b.trim());
@@ -165,12 +141,10 @@ export default function NovoGrupo() {
       capa,
       imageUrl: capa,
       imageKey,
-      valorTotal: parseFloat(valorTotal),
-      valorPorVaga: parseFloat(valorPorVaga),
+      // Preco, vagas reservadas e vagas disponiveis sao calculados no servidor.
+      valorTotal,
       descricao,
       capacidadeTotal: Number(capacidadeTotal) || 0,
-      vagasReservadasAdmin: VAGAS_RESERVADAS_ADMIN,
-      vagasDisponiveis,
       servicoPreAssinado,
       envioAutomaticoAcesso,
       filaEsperaAtiva,
@@ -462,24 +436,8 @@ export default function NovoGrupo() {
                   {errors.valorTotal && <p className={errorClass}>{errors.valorTotal}</p>}
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="valorPorVaga" className={labelClass}>
-                    Valor por vaga (R$) *
-                  </label>
-                  <input
-                    id="valorPorVaga"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    aria-required="true"
-                    aria-invalid={!!errors.valorPorVaga}
-                    value={valorPorVaga}
-                    readOnly
-                    aria-readonly="true"
-                    placeholder="Calculado automaticamente"
-                    className={`${inputBaseClass} ${errors.valorPorVaga ? 'border-red-500' : 'border-gray-200 bg-gray-50'}`}
-                  />
-                  <p className={helperClass}>Calculado automaticamente: valor total / capacidade total (inclui vaga do admin).</p>
-                  {errors.valorPorVaga && <p className={errorClass}>{errors.valorPorVaga}</p>}
+                  <span className={labelClass}>Valor por vaga</span>
+                  <PrevisaoPreco preco={preco} />
                 </div>
               </div>
 
@@ -515,12 +473,12 @@ export default function NovoGrupo() {
                     id="vagasReservadasAdmin"
                     type="number"
                     min="1"
-                    value={VAGAS_RESERVADAS_ADMIN}
+                    value={VAGAS_DONO}
                     readOnly
                     aria-readonly="true"
                     className={`${inputBaseClass} border-gray-200 bg-gray-50`}
                   />
-                  <p className={helperClass}>Sempre 1 vaga destinada ao administrador.</p>
+                  <p className={helperClass}>Sempre 1: a vaga do dono, que nao paga taxa.</p>
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="vagas" className={labelClass}>

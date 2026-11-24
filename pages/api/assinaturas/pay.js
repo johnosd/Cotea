@@ -8,19 +8,12 @@ import { obterLedger } from '../../../lib/ledger/servidor';
 import { CATEGORIAS } from '../../../lib/ledger/categorias';
 import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
+import { precoDoGrupo } from '../../../lib/preco';
 
 const parseObjectId = (valor) => {
   if (valor instanceof ObjectId) return valor;
   if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
   return null;
-};
-
-const getGrupoPreco = (grupo) => {
-  const valorVaga = normalizeAmount(grupo?.valorPorVaga);
-  const valorTotal = normalizeAmount(grupo?.valorTotal);
-  if (Number.isFinite(valorVaga) && valorVaga > 0) return valorVaga;
-  if (Number.isFinite(valorTotal) && valorTotal > 0) return valorTotal;
-  return NaN;
 };
 
 export default async function handler(req, res) {
@@ -49,29 +42,38 @@ export default async function handler(req, res) {
     const db = await getDb();
     const grupo = await db.collection('grupos').findOne(
       { _id: grupoIdObj },
-      { projection: { nome: 1, valorPorVaga: 1, valorTotal: 1 } }
+      { projection: { nome: 1, valorPorVaga: 1, repassePorVaga: 1, taxaPorVaga: 1, precoValido: 1 } }
     );
     if (!grupo) {
       return res.status(404).json({ error: 'Grupo nao encontrado' });
     }
 
-    const bodyAmount = normalizeAmount(req.body?.amount);
-    const amountFromGrupo = getGrupoPreco(grupo);
-    const amount = Number.isFinite(amountFromGrupo) && amountFromGrupo > 0
-      ? amountFromGrupo
-      : bodyAmount;
+    // Preco vem so do grupo (003-preco-por-vaga, D-07): sem fallback para valorTotal
+    // nem para o amount enviado pelo cliente. Fatura existente e cobrada pelo
+    // proprio valor, congelado na emissao (FR-016).
+    let invoice = null;
+    let preco = null;
+    let amount = NaN;
+    if (invoiceIdRaw) {
+      invoice = await getInvoiceById(invoiceIdRaw);
+      if (!invoice || invoice.userId !== String(userId) || invoice.grupoId !== String(grupoIdRaw)) {
+        return res.status(404).json({ error: 'Fatura nao encontrada para este usuario/grupo' });
+      }
+      amount = normalizeAmount(invoice.amount);
+    } else {
+      preco = precoDoGrupo(grupo);
+      if (!preco.valido) {
+        return res.status(409).json({ error: 'Preco indisponivel para este grupo', codigo: 'preco_indisponivel' });
+      }
+      amount = preco.valorPorVaga;
+    }
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: 'Valor da fatura invalido' });
     }
 
     const wallet = await ensureWallet(userId);
 
-    let invoice = null;
-    if (invoiceIdRaw) {
-      invoice = await getInvoiceById(invoiceIdRaw);
-      if (!invoice || invoice.userId !== String(userId) || invoice.grupoId !== String(grupoIdRaw)) {
-        return res.status(404).json({ error: 'Fatura nao encontrada para este usuario/grupo' });
-      }
+    if (invoice) {
       if (invoice.status === INVOICE_STATUS.PAGA) {
         return res.status(200).json({
           invoiceId: invoice._id,
@@ -86,6 +88,7 @@ export default async function handler(req, res) {
         userId,
         grupoId: grupoIdRaw,
         amount,
+        composicao: { repasseDono: preco.repasse, taxaCotea: preco.taxa },
         status: INVOICE_STATUS.AGUARDANDO_PAGAMENTO,
         description: `Assinatura do grupo ${grupo?.nome || ''}`.trim(),
         metadata: { grupoNome: grupo?.nome || '', origem: 'checkout_grupo' },

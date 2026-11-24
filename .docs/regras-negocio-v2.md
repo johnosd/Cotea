@@ -396,6 +396,12 @@ Regras:
   - O dono recebe `T / C` por membro; os 5% adicionais sao a taxa do Cotea, somada ao valor do membro.
   - O dono ocupa 1 vaga e paga a parte dele (`T / C`), sem taxa do Cotea.
   - Exemplo: `T = 40`, `C = 4` -> membro paga R$ 10,50; dono recebe R$ 10,00 por membro e o Cotea R$ 0,50.
+  - Arredondamento (feature 003): valor do membro e repasse (`T / C`) sao arredondados ao centavo, meio-para-cima, sobre o valor exato; a taxa do Cotea e a diferenca (`valor do membro - repasse`) e absorve o residuo, podendo ser R$ 0,00 em valores infimos. Exemplo: `T = 10`, `C = 3` -> R$ 3,50 = R$ 3,33 + R$ 0,17.
+  - O valor total precisa ser maior que zero, com ate 2 casas, e render ao menos R$ 0,01 de repasse por vaga.
+  - O preco e sempre calculado pelo sistema; valor por vaga enviado pela tela nao e aceito. O grupo guarda valor por vaga, repasse e taxa vigentes.
+- Vagas reservadas: sempre 1, a vaga do dono (nao editavel).
+- Na edicao, a capacidade nao pode ficar abaixo do numero atual de participantes (dono + membros nao banidos).
+- Grupo sem preco valido (dado legado que nao permite aplicar a regra) mostra "preco indisponivel" e nao aceita cobranca nem novos participantes ate ser corrigido; nao ha preco alternativo (valor total, preco antigo ou valor informado pela tela).
 - Categoria deve estar entre jogos, aplicativos, assinaturas e cursos, tanto no publico quanto nas organizacoes.
 - Beneficios, regras e FAQ devem ter limites de quantidade/tamanho.
 - Fidelidade: periodo minimo de permanencia opcional definido pelo dono, com efeito real no cancelamento (Fluxo 11).
@@ -406,7 +412,8 @@ Gap de implementacao:
 
 - Hoje o grupo e criado como `ativo`.
 - Hoje nao ha fila de aprovacao previa implementada.
-- Hoje valor por vaga e calculado de forma diferente entre criacao e edicao em alguns pontos: aplicar a formula unica acima (com taxa de 5%) nos dois lugares.
+- Resolvido (feature 003): a formula unica (com taxa de 5%) vale na criacao, na edicao, na cobranca e na exibicao; os grupos existentes sao recalculados pela migracao `scripts/migrar-precos-grupos.js`.
+- A tela de edicao ainda nao permite alterar valor total nem capacidade (so a API); a alteracao com aprovacao fica para V2-13.
 
 ## Fluxo 5: aprovacao de grupo pelo admin do sistema
 
@@ -929,7 +936,7 @@ Gap de implementacao:
 
 - Nao ha fluxo de recebiveis/repasse ao dono implementado: as categorias `recebivel_retido` e `disputa` e a movimentacao entre categorias (`mover`, mantendo grupo e participacao) ja existem (feature 002), mas nenhum fluxo gera recebiveis ainda (V2-11/V2-15).
 - Recebivel liberado vira saldo `pessoal` comum (pode pagar grupos ou ser sacado).
-- A conta da plataforma (`wallets._id = 'plataforma'`, categoria `receita_taxa`) existe e comeca vazia; nenhum fluxo grava taxa do Cotea ainda (V2-03/V2-11).
+- A conta da plataforma (`wallets._id = 'plataforma'`, categoria `receita_taxa`) existe e comeca vazia; nenhum fluxo grava taxa do Cotea ainda (V2-06/V2-11). A taxa de cada mensalidade ja fica registrada na composicao da fatura (feature 003).
 
 ## Fluxo 20: fila de espera
 
@@ -1095,7 +1102,9 @@ automatica, saque, disputas, faturas, convites, repasse e grupos
 
 - Valores monetarios devem ser normalizados para duas casas decimais.
 - A taxa do Cotea e de **5%**, somada ao valor do membro, igual no publico e no corporativo. Valor mensal do membro: `(T / C) x 1,05`.
-- O dono ocupa 1 vaga e paga `T / C`, sem taxa do Cotea.
+- O dono ocupa 1 vaga e paga `T / C`, sem taxa do Cotea. Essa parte e informativa: o sistema nao cobra o dono.
+- Cada fatura de mensalidade guarda a composicao congelada na emissao: repasse ao dono + taxa do Cotea (feature 003). O lancamento da taxa na conta da plataforma e do repasse ao dono fica para V2-06/V2-11.
+- Faturas ja emitidas nao mudam quando o preco do grupo muda: sao cobradas pelo proprio valor.
 - O primeiro pagamento de entrada no grupo no alvo v2 e:
   - mensalidade do ciclo atual (com taxa do Cotea);
   - caucao de 1 mensalidade;
@@ -1131,7 +1140,7 @@ automatica, saque, disputas, faturas, convites, repasse e grupos
 9. Formalizar fila de espera.
 10. Melhorar painel financeiro para diferenciar pagamentos, faturas, ledger, caucao, repasse retido e saldo sacavel.
 11. Criar o modelo de organizacoes: entidade, papeis, convites, solicitacoes de ingresso, remocao e `organizacaoId` em grupos e ledger.
-12. Aplicar a formula unica de valor por vaga com taxa de 5% na criacao e na edicao de grupo.
+12. Resolvido (feature 003): formula unica de valor por vaga com taxa de 5% na criacao, edicao, cobranca e exibicao.
 13. Implementar estorno automatico por SLA de 5 dias e por grupo `apos_completar` nao completado em 30 dias.
 14. Implementar encerramento direto pelo dono com reembolso proporcional automatico.
 15. Implementar inadimplencia: caucao quita fatura e agenda saida no fim do ciclo.

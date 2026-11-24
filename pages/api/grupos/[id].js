@@ -1,22 +1,48 @@
 import clientPromise from '../../../lib/mongodb';
-import { ObjectId, Int32, Double } from 'mongodb';
+import { ObjectId, Int32 } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
 import { deleteFromR2, hasR2Config } from '../../../lib/r2';
 import { getSessionUserId } from '../../../lib/wallet';
 import { logAudit } from '../../../lib/audit';
+import { hasRole, isUserBlocked, PERMISSIONS } from '../../../lib/authz';
+import { montarRespostaGrupo } from '../../../lib/grupo-publico';
 import {
   CATEGORIAS_PERMITIDAS,
-  parseNumero,
   parseObjectId,
   parseLista,
   parseFaq,
   parseFidelidade,
-  normalizarPreco,
   slugify,
+  camposPrecoParaGravar,
+  resumoPrecoAuditoria,
 } from '../../../lib/grupos-utils';
+import { calcularPrecoVaga, validarNovaCapacidade } from '../../../lib/preco';
 
-async function handleGet(grupoId, db, res) {
+// Quem pode ver os campos internos do grupo: staff (aba de grupos) ou dono/admin
+// do grupo. Qualquer falha de sessao cai na visao publica (falha segura).
+async function podeVerCamposInternos(grupoId, grupo, adminIdResolved, req, res, db) {
+  let session = null;
+  try {
+    session = await getServerSession(req, res, authOptions);
+  } catch {
+    return false;
+  }
+  if (!session?.user) return false;
+  if (isUserBlocked(session)) return false;
+  if (hasRole(session, PERMISSIONS.GROUPS_TAB)) return true;
+
+  const requesterId = parseObjectId(getSessionUserId(session));
+  if (!requesterId) return false;
+  const donoId = parseObjectId(adminIdResolved || grupo.admin?.userId);
+  if (donoId && donoId.equals(requesterId)) return true;
+  const membroAdmin = await db.collection('membrosGrupo').findOne({
+    grupoId, userId: requesterId, papel: 'admin', status: { $ne: 'banido' },
+  });
+  return Boolean(membroAdmin);
+}
+
+async function handleGet(grupoId, req, db, res) {
   const grupo = await db.collection('grupos').findOne({ _id: grupoId });
   if (!grupo) return res.status(404).json({ error: 'Grupo nao encontrado' });
 
@@ -40,16 +66,10 @@ async function handleGet(grupoId, db, res) {
   const adminAvatar = adminUser?.image || adminUser?.avatar || grupo.adminAvatar || '';
   const membrosAtivos = await db.collection('membrosGrupo').countDocuments({ grupoId, status: { $ne: 'banido' } });
 
-  return res.status(200).json({
-    ...grupo,
-    adminId: adminIdResolved || grupo.adminId || null,
-    adminIdString: adminIdResolved ? String(adminIdResolved) : grupo.adminIdString || null,
-    adminNome, adminEmail, adminAvatar, membrosAtivos,
-    admin: {
-      id: adminIdResolved ? String(adminIdResolved) : grupo.adminIdString || null,
-      nome: adminNome, email: adminEmail, avatar: adminAvatar,
-    },
-  });
+  const completa = await podeVerCamposInternos(grupoId, grupo, adminIdResolved, req, res, db);
+  return res.status(200).json(montarRespostaGrupo(grupo, {
+    adminIdResolvido: adminIdResolved, adminNome, adminEmail, adminAvatar, membrosAtivos, completa,
+  }));
 }
 
 async function handleDelete(grupoId, grupo, requesterId, session, req, db, res) {
@@ -82,10 +102,12 @@ async function handleDelete(grupoId, grupo, requesterId, session, req, db, res) 
 
 async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) {
   const {
-    nome, capa, imageUrl = '', imageKey = '', valorTotal, valorPorVaga,
+    // valorPorVaga, vagasReservadasAdmin e vagasDisponiveis do body sao ignorados:
+    // o preco e as vagas sao sempre calculados no servidor (003-preco-por-vaga, D-04).
+    nome, capa, imageUrl = '', imageKey = '', valorTotal,
     descricao = '', subtitulo = '', acesso = 'imediato', tempoEntrega = '',
-    confiabilidade = '', capacidadeTotal, categoria = '', vagasReservadasAdmin = 0,
-    vagasDisponiveis, servicoPreAssinado = false, envioAutomaticoAcesso = false,
+    confiabilidade = '', capacidadeTotal, categoria = '',
+    servicoPreAssinado = false, envioAutomaticoAcesso = false,
     filaEsperaAtiva = false, necessitaAnalise = false, observacoesInternas = '',
     tipoGrupo = 'publico', status = 'ativo', statusDetalhado = 'em_formacao',
     beneficios, fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes,
@@ -103,16 +125,10 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
   const necessitaAnaliseEfetivo = isSystemAdmin ? Boolean(necessitaAnalise) : Boolean(grupo.necessitaAnalise);
   const observacoesInternasEfetiva = isSystemAdmin ? (observacoesInternas || '') : (grupo.observacoesInternas || '');
 
-  const valorTotalNumero = normalizarPreco(valorTotal);
-  const valorPorVagaNumero = normalizarPreco(valorPorVaga);
-  const capacidadeNumero = Math.trunc(parseNumero(capacidadeTotal));
-  const vagasReservadasNumero = Math.trunc(parseNumero(vagasReservadasAdmin));
+  const preco = calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal });
 
   if (!nome) return res.status(400).json({ error: 'Nome e obrigatorio' });
-  if (!Number.isFinite(valorTotalNumero) || !Number.isFinite(valorPorVagaNumero)) return res.status(400).json({ error: 'Valor total e valor por vaga sao obrigatorios' });
-  if (!Number.isFinite(capacidadeNumero) || capacidadeNumero <= 0) return res.status(400).json({ error: 'Capacidade total deve ser maior que zero' });
-  if (!Number.isFinite(vagasReservadasNumero) || vagasReservadasNumero < 0) return res.status(400).json({ error: 'Vagas reservadas do admin deve ser zero ou mais' });
-  if (vagasReservadasNumero > capacidadeNumero) return res.status(400).json({ error: 'Vagas reservadas nao podem exceder a capacidade' });
+  if (!preco.valido) return res.status(400).json({ error: preco.mensagem, campo: preco.motivo });
   if (!categoriaEfetiva || !CATEGORIAS_PERMITIDAS.includes(categoriaEfetiva)) return res.status(400).json({ error: 'Categoria invalida' });
 
   const beneficiosParsed = parseLista(beneficios);
@@ -125,19 +141,25 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
   if (regrasParsed.some((r) => String(r).length > 500)) return res.status(400).json({ error: 'Cada regra deve ter no maximo 500 caracteres' });
   if (faqParsed.length > 20) return res.status(400).json({ error: 'Maximo de 20 itens no FAQ permitidos' });
 
+  // Participantes = membros nao-dono nao banidos + 1 (dono), lidos logo antes de gravar (D-06).
+  const membrosAtivos = await db.collection('membrosGrupo').countDocuments({
+    grupoId, papel: { $ne: 'admin' }, status: { $ne: 'banido' },
+  });
+  const capacidadeOk = validarNovaCapacidade({ capacidade: preco.capacidade, membrosAtivos });
+  if (!capacidadeOk.valido) {
+    return res.status(400).json({ error: capacidadeOk.mensagem, campo: 'capacidade_participantes' });
+  }
+
   const imagemFinal = imageUrl || capa || '';
-  const vagasDisponiveisNumero =
-    typeof vagasDisponiveis === 'number'
-      ? Math.trunc(parseNumero(vagasDisponiveis))
-      : Math.max(capacidadeNumero - vagasReservadasNumero, 0);
+  const vagasDisponiveisNumero = Math.max(preco.capacidade - capacidadeOk.participantes, 0);
+  const camposPreco = camposPrecoParaGravar(preco);
 
   const resultado = await db.collection('grupos').updateOne(
     { _id: grupoId },
     {
       $set: {
         nome, slug: slugify(nome), capa: imagemFinal, imageUrl: imageUrl || imagemFinal, imageKey,
-        valorTotal: new Double(valorTotalNumero), valorPorVaga: new Double(valorPorVagaNumero), descricao,
-        capacidadeTotal: new Int32(capacidadeNumero), vagasReservadasAdmin: new Int32(vagasReservadasNumero),
+        ...camposPreco, descricao,
         vagasDisponiveis: new Int32(vagasDisponiveisNumero), subtitulo,
         acesso: acessoEfetivo, tempoEntrega: tempoEntregaEfetivo, confiabilidade,
         categoria: categoriaEfetiva, tipoGrupo: tipoGrupoEfetivo, status, statusDetalhado,
@@ -156,11 +178,17 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
   await logAudit({
     action: 'grupo.updated', actorId: String(requesterId), actorEmail: session.user.email,
     targetId: String(grupoId), targetCollection: 'grupos',
-    details: { nome, status, categoria: categoriaEfetiva, valorPorVaga: valorPorVagaNumero },
+    details: {
+      nome, status, categoria: categoriaEfetiva,
+      preco: { antes: resumoPrecoAuditoria(grupo), depois: resumoPrecoAuditoria(camposPreco) },
+    },
     ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
   });
 
-  return res.status(200).json({ message: 'Grupo atualizado com sucesso' });
+  return res.status(200).json({
+    message: 'Grupo atualizado com sucesso',
+    preco: { valorPorVaga: preco.valorPorVaga, repasse: preco.repasse, taxa: preco.taxa },
+  });
 }
 
 export default async function handler(req, res) {
@@ -172,7 +200,7 @@ export default async function handler(req, res) {
     if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'ID invalido' });
     const grupoId = new ObjectId(id);
 
-    if (req.method === 'GET') return await handleGet(grupoId, db, res);
+    if (req.method === 'GET') return await handleGet(grupoId, req, db, res);
 
     // Autenticação e autorização compartilhadas entre DELETE e PUT
     const session = await getServerSession(req, res, authOptions);

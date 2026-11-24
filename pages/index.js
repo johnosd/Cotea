@@ -2,18 +2,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import Header from '../components/Header';
+import { NOTA_TAXA_COTEA } from '../components/PrevisaoPreco';
+import { precoDoGrupo } from '../lib/preco';
 import { getDb } from '../lib/mongodb';
-
-const parseNumero = (valor, padrao = NaN) => {
-  if (valor === null || valor === undefined) return padrao;
-  if (typeof valor === 'object' && ('$numberDouble' in valor || '$numberDecimal' in valor)) {
-    const raw = valor.$numberDouble || valor.$numberDecimal;
-    const num = Number(raw);
-    return Number.isFinite(num) ? num : padrao;
-  }
-  const num = Number(valor);
-  return Number.isFinite(num) ? num : padrao;
-};
 
 export default function Home({ gruposIniciais }) {
   const [busca, setBusca] = useState('');
@@ -47,17 +38,8 @@ export default function Home({ gruposIniciais }) {
             const grupoId = grupo._id || grupo.id;
             const { capacidade, membrosAtivos, vagasDisponiveis, vagasFila } = calcularStatusGrupo(grupo);
             const imageSrc = grupo.imageUrl || grupo.capa;
-            const valorPorVagaNumero = parseNumero(grupo.valorPorVaga);
-            const precoNumero = parseNumero(grupo.preco);
-            const valorTotalNumero = parseNumero(grupo.valorTotal);
-            const mensalidade =
-              Number.isFinite(valorPorVagaNumero) && valorPorVagaNumero > 0
-                ? valorPorVagaNumero
-                : Number.isFinite(precoNumero) && precoNumero > 0
-                ? precoNumero
-                : Number.isFinite(valorTotalNumero) && capacidade > 0
-                ? valorTotalNumero / capacidade
-                : 0;
+            // Preco so do grupo, sem fallback (003-preco-por-vaga, FR-014).
+            const preco = precoDoGrupo(grupo);
 
             return (
               <div
@@ -97,9 +79,14 @@ export default function Home({ gruposIniciais }) {
                       Fila de espera: <strong>{vagasFila}</strong> (aguardando saida agendada)
                     </p>
                   )}
-                  <p className="font-semibold text-gray-900">
-                    Mensalidade: R$ {mensalidade.toFixed(2)}
-                  </p>
+                  {preco.valido ? (
+                    <p className="font-semibold text-gray-900">
+                      Mensalidade: R$ {preco.valorPorVaga.toFixed(2)}
+                      <span className="block text-xs font-normal text-gray-500">{NOTA_TAXA_COTEA}</span>
+                    </p>
+                  ) : (
+                    <p className="font-semibold text-gray-500">Preco indisponivel</p>
+                  )}
                 </div>
 
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3">

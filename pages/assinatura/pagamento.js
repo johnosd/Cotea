@@ -4,11 +4,14 @@ import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
 import FlowStepper from '../../components/FlowStepper';
+import { NOTA_TAXA_COTEA } from '../../components/PrevisaoPreco';
+import { precoDoGrupo } from '../../lib/preco';
 
 export default function Pagamento() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
-  const { grupoId, nome, preco, userId } = router.query;
+  // O preco NAO vem da URL: e lido do grupo no servidor (003-preco-por-vaga, D-09).
+  const { grupoId, nome } = router.query;
   const [metodo, setMetodo] = useState('saldo');
   const [mostrarCupom, setMostrarCupom] = useState(false);
   const [cpfPix, setCpfPix] = useState('');
@@ -21,11 +24,16 @@ export default function Pagamento() {
   const [erroPagamento, setErroPagamento] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [invoiceId, setInvoiceId] = useState('');
-  const grupoNome = nome || 'Grupo';
-  const precoNumero = useMemo(() => {
-    const n = Number(preco);
-    return Number.isFinite(n) && n > 0 ? n : 35;
-  }, [preco]);
+  const [grupo, setGrupo] = useState(null);
+  const [grupoCarregando, setGrupoCarregando] = useState(true);
+  const grupoNome = grupo?.nome || nome || 'Grupo';
+  const precoGrupo = useMemo(() => precoDoGrupo(grupo), [grupo]);
+  const precoNumero = precoGrupo.valido ? precoGrupo.valorPorVaga : 0;
+  const precoTexto = grupoCarregando
+    ? 'Carregando...'
+    : precoGrupo.valido
+    ? `R$ ${precoNumero.toFixed(2)}`
+    : 'Preco indisponivel';
   const saldoFormatado = useMemo(() => {
     if (saldo === null) return saldoCarregando ? 'Carregando...' : 'Indisponivel';
     return `R$ ${saldo.toFixed(2)}`;
@@ -70,6 +78,32 @@ export default function Pagamento() {
       setMetodo('pix');
     }
   }, [metodo, saldoCarregando, saldoSuficiente]);
+
+  // Carrega o grupo (fonte do preco)
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (!grupoId) {
+      setGrupoCarregando(false);
+      return;
+    }
+    let ativo = true;
+    const carregarGrupo = async () => {
+      setGrupoCarregando(true);
+      try {
+        const res = await fetch(`/api/grupos/${grupoId}`);
+        const data = await res.json();
+        if (ativo) setGrupo(res.ok ? data : null);
+      } catch {
+        if (ativo) setGrupo(null);
+      } finally {
+        if (ativo) setGrupoCarregando(false);
+      }
+    };
+    carregarGrupo();
+    return () => {
+      ativo = false;
+    };
+  }, [router.isReady, grupoId]);
 
   // Carrega saldo real da carteira
   useEffect(() => {
@@ -133,12 +167,11 @@ export default function Pagamento() {
   };
 
   const cpfValido = metodo === 'pix' ? (cpfPix.length === 11 && validarCpf(cpfPix)) : true;
-  const podeFinalizar = metodo === 'saldo' || cpfValido;
+  const podeFinalizar = precoGrupo.valido && (metodo === 'saldo' || cpfValido);
 
   const pagarFaturaAssinatura = async (invoiceIdAtual) => {
     const payload = {
       grupoId,
-      amount: precoNumero,
       ...(invoiceIdAtual ? { invoiceId: invoiceIdAtual } : {}),
     };
     const res = await fetch('/api/assinaturas/pay', {
@@ -240,7 +273,6 @@ export default function Pagamento() {
       const query = new URLSearchParams();
       if (grupoId) query.append('grupoId', grupoId);
       if (nome) query.append('nome', nome);
-      if (precoNumero) query.append('preco', String(precoNumero));
       if (pagamento.invoiceId) query.append('invoiceId', pagamento.invoiceId);
 
       router.push(`/assinatura/sucesso${query.toString() ? `?${query.toString()}` : ''}`);
@@ -290,11 +322,11 @@ export default function Pagamento() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-lg font-semibold">{grupoNome}</p>
-                    <p className="text-sm text-gray-600">Inclui mensalidade + caucao. Sem taxas extras.</p>
+                    <p className="text-sm text-gray-600">Mensalidade do grupo, {NOTA_TAXA_COTEA}.</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-gray-500">Valor hoje</p>
-                    <p className="text-xl font-bold">R$ {precoNumero.toFixed(2)}</p>
+                    <p className="text-xl font-bold">{precoTexto}</p>
                   </div>
                 </div>
               </section>
@@ -386,6 +418,9 @@ export default function Pagamento() {
             )}
           </section>
 
+          {!grupoCarregando && !precoGrupo.valido && (
+            <p className="text-sm text-red-600">O preco deste grupo esta indisponivel no momento. Nao e possivel assinar agora.</p>
+          )}
           {erroPagamento && <p className="text-sm text-red-600">{erroPagamento}</p>}
           {mensagem && <p className="text-sm text-blue-700">{mensagem}</p>}
         </div>
@@ -394,7 +429,7 @@ export default function Pagamento() {
           <div className="bg-white border-t md:border border-gray-200 shadow-2xl md:shadow-sm px-4 py-4 md:rounded-2xl flex flex-col md:flex-row items-center md:items-stretch gap-3">
             <div className="flex-1 w-full">
               <p className="text-xs text-gray-500">Pagamento</p>
-              <p className="text-lg font-bold text-gray-900">R$ {precoNumero.toFixed(2)}</p>
+              <p className="text-lg font-bold text-gray-900">{precoTexto}</p>
               <p className="text-xs text-gray-600">Transacao segura criptografada.</p>
             </div>
             <button

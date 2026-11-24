@@ -31,17 +31,8 @@ notificações, conta e auditoria (V2-22 a V2-26).
 - **V2-02** — especificada em `sdd/specs/002-ledger-segmentado/spec.md` (ver
   `## Features`).
 
-- **V2-03 · P0 · Regra única de preço por vaga (taxa Cotea 5%) e capacidade
-  mínima** — Calcular no servidor `valorPorVaga = round((T / C) × 1,05, 2)`,
-  com repasse `T / C` ao dono e 5% ao Cotea; dono ocupa 1 vaga sem taxa;
-  capacidade mínima 2; não confiar em `valorPorVaga` vindo do cliente. Mesma
-  regra na criação, edição, cobrança e exibição. Fonte: RN:394-398, 409,
-  1072-1074. Evidência: criação calcula `T / C` sem taxa
-  (`pages/admin/grupos/novo.js:92`), edição calcula `T / (C − vagasReservadasAdmin)`
-  (`pages/admin/grupos/[id].js:142-147`), as APIs gravam o `valorPorVaga` do body
-  (`pages/api/grupos/index.js:77,109`, `pages/api/grupos/[id].js:107,139`) e
-  aceitam capacidade 1 (`pages/api/grupos/index.js:83`). Definir o destino de
-  `vagasReservadasAdmin`. Pré-requisito de V2-05 e V2-13.
+- **V2-03** — especificada em `sdd/specs/003-preco-por-vaga/spec.md` (ver
+  `## Features`).
 
 #### Cadastro, aprovação e entrada
 
@@ -409,7 +400,8 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | Slug | Título | Status | Progresso | Última Atualização |
 | --- | --- | --- | --- | --- |
 | 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
-| 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 48/51 tasks | 2026-11-24 |
+| 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
+| 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Implementada | 38/38 tasks | 2026-11-24 |
 
 ## Melhorias Ad-hoc
 
@@ -422,3 +414,5 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 
 | Slug | Título | Fase Atual | Veredito/Status | Próximo Passo | Última Atualização |
 | --- | --- | --- | --- | --- | --- |
+| get-grupo-expoe-dados-internos | GET /api/grupos/[id] expõe dados internos sem sessão | Test | verified | Concluído | 2026-11-24 |
+| admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
