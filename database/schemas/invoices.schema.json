@@ -5,6 +5,13 @@
     "userId": { "bsonType": "string" },
     "grupoId": { "bsonType": "string" },
     "amount": { "bsonType": "number" },
+    "composicao": {
+      "bsonType": "object",
+      "properties": {
+        "repasseDono": { "bsonType": "number" },
+        "taxaCotea": { "bsonType": "number" }
+      }
+    },
     "status": { "bsonType": "string" },
     "description": { "bsonType": "string" },
     "metadata": {

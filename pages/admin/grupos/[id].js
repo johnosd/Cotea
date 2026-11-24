@@ -2,8 +2,12 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Header from '../../../components/Header';
+import PrevisaoPreco from '../../../components/PrevisaoPreco';
+import { calcularPrecoVaga, VAGAS_DONO } from '../../../lib/preco';
+import { getServerSession } from 'next-auth/next';
 import clientPromise from '../../../lib/mongodb';
-import { ObjectId } from 'mongodb';
+import { authOptions } from '../../api/auth/[...nextauth]';
+import { resolverPaginaEdicaoGrupo } from '../../../lib/grupos-acesso';
 
 const inputBaseClass = 'w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition';
 const labelClass = 'text-sm font-semibold text-gray-800 flex items-center gap-2';
@@ -71,10 +75,8 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
   const [uploadingImg, setUploadingImg] = useState(false);
   const [imageKey, setImageKey] = useState(grupo.imageKey || '');
   const [valorTotal] = useState(grupo.valorTotal ?? '');
-  const [valorPorVaga, setValorPorVaga] = useState(grupo.valorPorVaga ?? '');
   const [descricao, setDescricao] = useState(grupo.descricao || '');
   const [capacidadeTotal, setCapacidadeTotal] = useState(grupo.capacidadeTotal ?? '');
-  const [vagasReservadasAdmin, setVagasReservadasAdmin] = useState(grupo.vagasReservadasAdmin ?? 1);
   const [subtitulo, setSubtitulo] = useState(grupo.subtitulo || '');
   const [acesso, setAcesso] = useState(grupo.acesso || 'imediato');
   const [tempoEntrega, setTempoEntrega] = useState(grupo.tempoEntrega || 'Ate 5 dias (geralmente mais rapido)');
@@ -113,9 +115,15 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
 
   const vagasDisponiveis = useMemo(() => {
     const cap = Number(capacidadeTotal) || 0;
-    const reservadas = Number(vagasReservadasAdmin) || 0;
-    return Math.max(cap - reservadas, 0);
-  }, [capacidadeTotal, vagasReservadasAdmin]);
+    return Math.max(cap - VAGAS_DONO, 0);
+  }, [capacidadeTotal]);
+
+  // Previa pela mesma regra do servidor (lib/preco.js). T e C ficam so-leitura
+  // nesta tela; alterar preco/capacidade pela UI e a V2-13 (003-preco-por-vaga, D-05).
+  const preco = useMemo(
+    () => calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal }),
+    [valorTotal, capacidadeTotal]
+  );
 
   const statusDetalhadoCalculado = useMemo(() => {
     const capNumero = Number(capacidadeTotal) || 0;
@@ -127,19 +135,6 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
     if (acesso === 'apos_completar' && capNumero > 0 && ocupacao >= capNumero) return 'ativo';
     return 'em_formacao';
   }, [acesso, capacidadeTotal, grupo.membrosAtivos, grupo.vagasDisponiveis]);
-
-  useEffect(() => {
-    const totalNumero = Number(valorTotal);
-    const capNumero = Number(capacidadeTotal);
-    const reservadasNumero = Number(vagasReservadasAdmin);
-    const vagasMembros = capNumero - reservadasNumero;
-    if (!Number.isFinite(totalNumero) || totalNumero <= 0 || !Number.isFinite(vagasMembros) || vagasMembros <= 0) {
-      setValorPorVaga('');
-      return;
-    }
-    const calculado = totalNumero / vagasMembros;
-    setValorPorVaga(calculado.toFixed(2));
-  }, [valorTotal, capacidadeTotal, vagasReservadasAdmin]);
 
   // Retornos antecipados SEMPRE depois de todos os hooks (rules-of-hooks, B-07).
   if (status === 'loading') {
@@ -155,22 +150,7 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
   const validateForm = () => {
     const novoErrors = {};
     if (!nome.trim()) novoErrors.nome = 'Nome e obrigatorio.';
-    if (!valorTotal || Number.isNaN(Number(valorTotal))) novoErrors.valorTotal = 'Informe o valor total.';
-    if (!valorPorVaga || Number.isNaN(Number(valorPorVaga))) novoErrors.valorPorVaga = 'Informe o valor por vaga.';
-    const cap = Number(capacidadeTotal);
-    if (Number.isNaN(cap)) novoErrors.capacidadeTotal = 'Capacidade deve ser numero.';
-    if (!Number.isNaN(cap) && cap <= 0) novoErrors.capacidadeTotal = 'Capacidade deve ser maior que zero.';
-    const reservadas = Number(vagasReservadasAdmin);
-    if (Number.isNaN(reservadas) || reservadas < 0) novoErrors.vagasReservadasAdmin = 'Vagas reservadas deve ser zero ou mais.';
-    if (!Number.isNaN(reservadas) && !Number.isNaN(cap)) {
-      if (reservadas >= cap) {
-        novoErrors.vagasReservadasAdmin = 'Reservadas nao podem ser iguais ou maiores que a capacidade.';
-      } else if (cap - reservadas <= 0) {
-        novoErrors.vagasDisponiveis = 'Vagas disponiveis devem ser maiores que zero.';
-      } else if (cap - reservadas < 1) {
-        novoErrors.vagasReservadasAdmin = 'Deixe pelo menos 1 vaga para membros.';
-      }
-    }
+    if (!preco.valido) novoErrors.preco = preco.mensagem;
     if (!linkOficial || !validarUrl(linkOficial)) novoErrors.linkOficial = 'Informe uma URL valida (http/https).';
     if (!beneficios.length) novoErrors.beneficios = 'Adicione pelo menos 1 beneficio.';
     if (!regras.length) novoErrors.regras = 'Adicione pelo menos 1 regra.';
@@ -219,11 +199,8 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nome, capa, imageUrl: capa, imageKey,
-          valorTotal: parseFloat(valorTotal),
-          valorPorVaga: parseFloat(valorPorVaga),
-          descricao, capacidadeTotal: Number(capacidadeTotal) || 0,
-          vagasReservadasAdmin: Number(vagasReservadasAdmin) || 0,
-          vagasDisponiveis, subtitulo, acesso, tempoEntrega, confiabilidade,
+          // preco, vagas reservadas e disponiveis sao calculados no servidor
+          valorTotal, descricao, capacidadeTotal: Number(capacidadeTotal) || 0, subtitulo, acesso, tempoEntrega, confiabilidade,
           categoria, tipoGrupo,
           status: 'cancelado',
           statusDetalhado: statusDetalhadoCalculado,
@@ -236,7 +213,10 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
           linkOficial: linkOficial?.trim() || '',
         }),
       });
-      if (!res.ok) throw new Error('Erro ao cancelar grupo.');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Erro ao cancelar grupo.');
+      }
       setSucesso('Grupo cancelado.');
       setTimeout(() => router.push('/admin/grupos'), 1500);
     } catch (error) {
@@ -259,12 +239,10 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
       capa,
       imageUrl: capa,
       imageKey,
-      valorTotal: parseFloat(valorTotal),
-      valorPorVaga: parseFloat(valorPorVaga),
+      // preco, vagas reservadas e disponiveis sao calculados no servidor
+      valorTotal,
       descricao,
       capacidadeTotal: Number(capacidadeTotal) || 0,
-      vagasReservadasAdmin: Number(vagasReservadasAdmin) || 0,
-      vagasDisponiveis,
       subtitulo,
       acesso,
       tempoEntrega,
@@ -298,7 +276,10 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Erro ao salvar grupo.');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Erro ao salvar grupo.');
+      }
 
       if (imagemFile) {
         setUploadingImg(true);
@@ -504,22 +485,9 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
                   {errors.valorTotal && <p className={errorClass}>{errors.valorTotal}</p>}
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="valorPorVaga" className={labelClass}>
-                    Valor por vaga (R$) *
-                  </label>
-                  <input
-                    id="valorPorVaga"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    aria-required="true"
-                    aria-invalid={!!errors.valorPorVaga}
-                    value={valorPorVaga}
-                    readOnly
-                    disabled
-                    className={`${inputBaseClass} border-gray-200 bg-gray-50`}
-                  />
-                  {errors.valorPorVaga && <p className={errorClass}>{errors.valorPorVaga}</p>}
+                  <span className={labelClass}>Valor por vaga</span>
+                  <PrevisaoPreco preco={preco} titulo="Preco por vaga (calculado)" />
+                  {errors.preco && <p className={errorClass}>{errors.preco}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -542,22 +510,16 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="reservadas" className={labelClass}>
-                    Vagas reservadas (admin)
+                    Vagas reservadas (dono)
                   </label>
                   <input
                     id="reservadas"
-                    type="number"
-                    min="1"
-                    max={Math.max((Number(capacidadeTotal) || 0) - 1, 1)}
-                    aria-invalid={!!errors.vagasReservadasAdmin}
-                    value={vagasReservadasAdmin}
-                    onChange={(e) => isSystemAdmin && setVagasReservadasAdmin(e.target.value)}
-                    readOnly={!isSystemAdmin}
-                    disabled={!isSystemAdmin}
-                    className={`${inputBaseClass} ${errors.vagasReservadasAdmin ? 'border-red-500' : 'border-gray-200'} ${!isSystemAdmin ? 'bg-gray-50' : ''}`}
+                    value={`${VAGAS_DONO} (vaga do dono)`}
+                    readOnly
+                    aria-readonly="true"
+                    className={`${inputBaseClass} border-gray-200 bg-gray-50`}
                   />
-                  <p className={helperClass}>Admin pode reservar mais vagas desde que reste ao menos 1 vaga para membros.</p>
-                  {errors.vagasReservadasAdmin && <p className={errorClass}>{errors.vagasReservadasAdmin}</p>}
+                  <p className={helperClass}>Sempre 1: a vaga do dono, que nao paga taxa.</p>
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="vagas" className={labelClass}>
@@ -996,51 +958,14 @@ export default function EditarGrupo({ grupo, participantes = [] }) {
   );
 }
 
-export async function getServerSideProps({ params }) {
-  const { id } = params;
+export async function getServerSideProps({ params, req, res }) {
+  // Autorizacao no servidor (constitution I): nada do grupo vai nos props sem permissao.
+  const session = await getServerSession(req, res, authOptions);
+  if (!session?.user) return resolverPaginaEdicaoGrupo({ db: null, session, id: params.id });
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/grupos/${id}`);
-    if (!res.ok) {
-      return { notFound: true };
-    }
-    const grupo = await res.json();
-
-    // Busca participantes (exceto admin) na colecao membrosGrupo
     const client = await clientPromise;
     const db = client.db(process.env.MONGODB_DB);
-    const participantes = await db
-      .collection('membrosGrupo')
-      .aggregate([
-        {
-          $match: {
-            grupoId: new ObjectId(id),
-            papel: { $ne: 'admin' },
-          },
-        },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'userId',
-            foreignField: '_id',
-            as: 'user',
-          },
-        },
-        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-        {
-          $project: {
-            _id: 0,
-            userId: '$userId',
-            papel: 1,
-            status: 1,
-            nome: { $ifNull: ['$user.nome', ''] },
-            email: { $ifNull: ['$user.email', ''] },
-            image: { $ifNull: ['$user.image', ''] },
-          },
-        },
-      ])
-      .toArray();
-
-    return { props: { grupo, participantes: JSON.parse(JSON.stringify(participantes)) } };
+    return await resolverPaginaEdicaoGrupo({ db, session, id: params.id });
   } catch (error) {
     return { notFound: true };
   }

@@ -7,12 +7,13 @@ import { useRouter } from 'next/router';
 import clientPromise from '../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 import Header from '../../components/Header';
+import { NOTA_TAXA_COTEA } from '../../components/PrevisaoPreco';
+import { precoDoGrupo } from '../../lib/preco';
 
 const DEFAULT_CONTENT = {
   nome: 'Google One',
   subtitulo: 'Premium Anual - 2 TB',
   descricao: 'Armazenamento compartilhado com contas individuais preservando privacidade e espaco garantido.',
-  preco: 10.44,
   confiabilidade: 'Selo ouro',
   tempoEntrega: 'Ate 5 dias (geralmente mais rapido)',
   acesso: 'Convite',
@@ -89,19 +90,10 @@ export default function GrupoDetalhe({ grupo }) {
   const { capacidade, membrosAtivos, vagasDisponiveis } = useMemo(() => calcularStatusGrupo(dados), [dados]);
 
   const nome = dados.nome || DEFAULT_CONTENT.nome;
-  const valorPorVagaNumero = parseNumero(dados.valorPorVaga);
-  const valorTotalNumero = parseNumero(dados.valorTotal);
-  const capacidadeTotalNumero = parseNumero(dados.capacidadeTotal);
-  const capacidadeDivisor = Number.isFinite(capacidadeTotalNumero) && capacidadeTotalNumero > 0 ? capacidadeTotalNumero : capacidade;
-  const precoNumeroFallback = parseNumero(dados.preco);
-  const precoCalculado = Number.isFinite(valorPorVagaNumero)
-    ? valorPorVagaNumero
-    : Number.isFinite(valorTotalNumero) && capacidadeDivisor > 0
-    ? valorTotalNumero / capacidadeDivisor
-    : Number.isFinite(precoNumeroFallback)
-    ? precoNumeroFallback
-    : NaN;
-  const preco = Number.isFinite(precoCalculado) ? precoCalculado : DEFAULT_CONTENT.preco;
+  // Preco so do grupo, sem fallback para valorTotal/preco legado (003-preco-por-vaga, FR-014).
+  const precoGrupo = precoDoGrupo(dados);
+  const precoTexto = precoGrupo.valido ? `R$ ${precoGrupo.valorPorVaga.toFixed(2)}` : 'Preco indisponivel';
+  const precoMensalTexto = precoGrupo.valido ? `${precoTexto}/mes` : precoTexto;
   const descricao = dados.descricao || DEFAULT_CONTENT.descricao;
   const capa = dados.imageUrl || dados.capa || '';
 
@@ -252,11 +244,10 @@ export default function GrupoDetalhe({ grupo }) {
     const query = new URLSearchParams();
     if (grupoId) query.append('grupoId', grupoId);
     if (nome) query.append('nome', nome);
-    if (preco) query.append('preco', preco);
     if (userId) query.append('userId', userId);
     const qs = query.toString();
     return qs ? `?${qs}` : '';
-  }, [grupoId, nome, preco, userId]);
+  }, [grupoId, nome, userId]);
 
   return (
     <>
@@ -300,8 +291,13 @@ export default function GrupoDetalhe({ grupo }) {
 
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="text-3xl font-extrabold text-gray-900">
-                    R$ {preco.toFixed(2)}
-                    <span className="text-sm text-gray-600 font-semibold ml-1">/mes</span>
+                    {precoTexto}
+                    {precoGrupo.valido && (
+                      <>
+                        <span className="text-sm text-gray-600 font-semibold ml-1">/mes</span>
+                        <span className="block text-xs text-gray-500 font-normal">{NOTA_TAXA_COTEA}</span>
+                      </>
+                    )}
                   </div>
                   <Badge text={vagasDisponiveis > 0 ? 'Vagas disponiveis' : 'Ultimas vagas'} variant={vagasDisponiveis > 0 ? 'success' : 'warning'} />
                   <Badge text="Convite seguro" variant="info" />
@@ -336,7 +332,8 @@ export default function GrupoDetalhe({ grupo }) {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Mensalidade</p>
-                    <p className="text-2xl font-bold text-gray-900">R$ {preco.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-gray-900">{precoTexto}</p>
+                    {precoGrupo.valido && <p className="text-xs text-gray-500">{NOTA_TAXA_COTEA}</p>}
                   </div>
                   <Badge text="CTA em destaque" variant="info" />
                 </div>
@@ -354,6 +351,10 @@ export default function GrupoDetalhe({ grupo }) {
                   >
                     <FaWhatsapp /> Acessar grupo no WhatsApp
                   </Link>
+                ) : !precoGrupo.valido ? (
+                  <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold shadow bg-gray-300 text-gray-600" aria-disabled="true">
+                    Preco indisponivel
+                  </div>
                 ) : (
                   <Link
                     href={
@@ -450,7 +451,7 @@ export default function GrupoDetalhe({ grupo }) {
 
               <CardSection title="Preco e disponibilidade">
                 <div className="grid md:grid-cols-3 gap-4">
-                  <InfoCard label="Preco" value={`R$ ${preco.toFixed(2)}/mes`} />
+                  <InfoCard label="Preco" value={precoMensalTexto} />
                   <InfoCard label="Vagas restantes" value={`${vagasDisponiveis || 0} de ${capacidade}`} />
                   <InfoCard label="Tipo de acesso" value={acesso} />
                   <InfoCard label="Renovacao" value={dados.subtitulo || 'Anual do plano Google One'} />
@@ -561,7 +562,7 @@ export default function GrupoDetalhe({ grupo }) {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <div>
             <p className="text-xs text-gray-600">Entrar no grupo</p>
-            <p className="text-lg font-bold text-gray-900">R$ {preco.toFixed(2)}/mes</p>
+            <p className="text-lg font-bold text-gray-900">{precoMensalTexto}</p>
           </div>
           {isAdmin ? (
             <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-full font-semibold shadow bg-gray-300 text-gray-600">

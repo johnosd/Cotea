@@ -2,6 +2,7 @@ import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]';
 import clientPromise from '../../../../lib/mongodb';
+import { precoDoGrupo } from '../../../../lib/preco';
 
 const parseObjectId = (value) => {
   if (typeof value === 'string' && ObjectId.isValid(value)) return new ObjectId(value);
@@ -43,11 +44,20 @@ export default async function handler(req, res) {
     const grupoId = new ObjectId(id);
     const grupo = await db.collection('grupos').findOne(
       { _id: grupoId },
-      { projection: { capacidadeTotal: 1, acesso: 1, status: 1, statusDetalhado: 1, nome: 1 } }
+      {
+        projection: {
+          capacidadeTotal: 1, acesso: 1, status: 1, statusDetalhado: 1, nome: 1,
+          valorPorVaga: 1, repassePorVaga: 1, taxaPorVaga: 1, precoValido: 1,
+        },
+      }
     );
 
     if (!grupo) {
       return res.status(404).json({ error: 'Grupo nao encontrado' });
+    }
+    // Grupo sem preco valido nao recebe novos participantes (003-preco-por-vaga, FR-011).
+    if (!precoDoGrupo(grupo).valido) {
+      return res.status(409).json({ error: 'Preco indisponivel para este grupo', codigo: 'preco_indisponivel' });
     }
 
     const userIdObj = parseObjectId(userId);

@@ -261,15 +261,15 @@ Task: "T014 [P] [US1] withdraw/create.js via núcleo"
 
 **Goal**: Fechar as lacunas apontadas pelo `sdd-converge` em 2026-11-24.
 
-- [ ] T037 Confirmar se o `MONGODB_DB` da produção (Vercel) é o mesmo banco do `.env.local`, onde o validator com `categoria`/`organizacaoId` obrigatórios já foi aplicado; se for, publicar a 002 no `main` (ou relaxar temporariamente o validator) antes de qualquer gravação de carteira em produção — origem `plan: D-10 / R-001` (achado C-01, HIGH)
-- [ ] T038 [P] Teste em `tests/ledger/categorias-bloqueadas.test.js` iterando todas as `CATEGORIAS_BLOQUEADAS` (`caucao`, `retido_entrada`, `recebivel_retido`, `disputa`): crédito não altera disponível; saque e uso de saldo acima do `pessoal` recusados sem gravar; categoria de um grupo não cobre débito de outro — origem `SC-003` (achado C-02, MEDIUM)
+- [X] T037 Confirmar se o `MONGODB_DB` da produção (Vercel) é o mesmo banco do `.env.local`, onde o validator com `categoria`/`organizacaoId` obrigatórios já foi aplicado; se for, publicar a 002 no `main` (ou relaxar temporariamente o validator) antes de qualquer gravação de carteira em produção — origem `plan: D-10 / R-001` (achado C-01, HIGH)
+- [X] T038 [P] Teste em `tests/ledger/categorias-bloqueadas.test.js` iterando todas as `CATEGORIAS_BLOQUEADAS` (`caucao`, `retido_entrada`, `recebivel_retido`, `disputa`): crédito não altera disponível; saque e uso de saldo acima do `pessoal` recusados sem gravar; categoria de um grupo não cobre débito de outro — origem `SC-003` (achado C-02, MEDIUM)
 - [ ] T039 Rodar `quickstart.md` 4.2 num dia em que `consistencia:<data>` ainda não foi processado: lançamento sem categoria inserido à mão no banco dev → execução pela aba Rotinas → notificação "Inconsistência no ledger" aos admins → remover o lançamento — origem `SC-005` (achado C-03, LOW)
 
 **Critério de Conclusão**: T037 com o banco de produção confirmado e protegido; `npm test` verde incluindo T038; T039 com o alerta visto no painel; contratos 001/002 verdes e travas íntegras.
 
 **Registro da Fase**:
-- Status:
-- Feito:
-- Contrato:
-- Testes executados:
-- Pendências:
+- Status: Em andamento (2026-11-24) — T037 e T038 concluídas; T039 aguarda outro dia.
+- Feito: T037 — a 002 foi publicada em produção pelo usuário (PR #5, merge `cd00a54` no `main`, commit `7512796 ledger`); o código em produção grava `categoria`/`organizacaoId`, então o validator aplicado deixa de quebrar a produção, qualquer que seja o banco dela. Conferido: `https://cotea-nine.vercel.app/` → 200; `/api/wallet/balance`, `/api/admin/plataforma/receita`, `/api/withdraw/resumo-usuario` → 307 (login), sem 500; `select_account` presente no `main`. T038 — `tests/ledger/categorias-bloqueadas.test.js` (13 casos): para cada uma de `caucao`, `retido_entrada`, `recebivel_retido`, `disputa`, crédito não altera disponível/sacável, saque e uso de saldo acima do `pessoal` recusados sem gravar, saldo do G1 não cobre débito no G2 e só a movimentação no próprio grupo libera o valor. Nenhuma mudança em código de produção.
+- Contrato: sem contrato nesta fase; `npm run test:contrato` → 10/10 verdes, travas 001 e 002 íntegras.
+- Testes executados: `npx vitest run tests/ledger/categorias-bloqueadas.test.js` → 13/13 (1ª iteração); `npm test` → 92/92 (17 arquivos); `npx eslint tests/ledger/categorias-bloqueadas.test.js` → 0 erros.
+- Pendências: T039 (quickstart 4.2 pelo painel) só num dia em que `consistencia:<data>` ainda não foi processado.

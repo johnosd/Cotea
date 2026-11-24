@@ -1,0 +1,12 @@
+{
+  "feature": "003-preco-por-vaga",
+  "lockedAt": "2026-11-24 15:27",
+  "total": 5,
+  "files": [
+    {
+      "path": "tests/contract/003-preco-por-vaga.contract.test.js",
+      "sha256": "1d48778bf609ef41193e2399e2ca9fea314302fa73b685a17c0b3aa0a280b5f0",
+      "tests": 5
+    }
+  ]
+}

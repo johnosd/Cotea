@@ -6,17 +6,16 @@ import FlowStepper from '../../components/FlowStepper';
 
 export default function Relacionamento() {
   const router = useRouter();
-  const { grupoId, nome, preco, userId } = router.query;
+  const { grupoId, nome, userId } = router.query;
   const [aceitou, setAceitou] = useState(false);
   const hrefContinuar = useMemo(() => {
     const query = new URLSearchParams();
     if (grupoId) query.append('grupoId', grupoId);
     if (nome) query.append('nome', nome);
-    if (preco) query.append('preco', preco);
     if (userId) query.append('userId', userId);
     const qs = query.toString();
     return `/assinatura/pagamento${qs ? `?${qs}` : ''}`;
-  }, [grupoId, nome, preco, userId]);
+  }, [grupoId, nome, userId]);
 
   return (
     <>

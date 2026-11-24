@@ -1,19 +1,20 @@
 import clientPromise from '../../../lib/mongodb';
-import { Int32, Double } from 'mongodb';
+import { Int32 } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
 import { getSessionUserId } from '../../../lib/wallet';
 import { logAudit } from '../../../lib/audit';
 import {
   CATEGORIAS_PERMITIDAS,
-  parseNumero,
   parseObjectId,
   parseLista,
   parseFaq,
   parseFidelidade,
-  normalizarPreco,
   slugify,
+  camposPrecoParaGravar,
+  resumoPrecoAuditoria,
 } from '../../../lib/grupos-utils';
+import { calcularPrecoVaga, VAGAS_DONO } from '../../../lib/preco';
 
 async function handleList(db, res) {
   const grupos = await db
@@ -53,10 +54,12 @@ async function handleList(db, res) {
 
 async function handleCreate(req, res, db) {
   const {
-    nome, capa, imageUrl = '', imageKey = '', valorTotal, valorPorVaga,
+    // valorPorVaga, vagasReservadasAdmin e vagasDisponiveis do body sao ignorados:
+    // o preco e as vagas sao sempre calculados no servidor (003-preco-por-vaga, D-04).
+    nome, capa, imageUrl = '', imageKey = '', valorTotal,
     descricao = '', subtitulo = '', acesso = 'imediato', tempoEntrega = '',
-    confiabilidade = '', capacidadeTotal, categoria = '', vagasReservadasAdmin = 0,
-    vagasDisponiveis, servicoPreAssinado = false, envioAutomaticoAcesso = false,
+    confiabilidade = '', capacidadeTotal, categoria = '',
+    servicoPreAssinado = false, envioAutomaticoAcesso = false,
     filaEsperaAtiva = false, necessitaAnalise = false, observacoesInternas = '',
     status = 'ativo', statusDetalhado = 'em_formacao', tipoGrupo = 'publico',
     beneficios, fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes,
@@ -73,16 +76,10 @@ async function handleCreate(req, res, db) {
   const adminUser = await db.collection('users').findOne({ _id: adminId });
   if (!adminUser) return res.status(403).json({ error: 'Administrador nao encontrado' });
 
-  const valorTotalNumero = normalizarPreco(valorTotal);
-  const valorPorVagaNumero = normalizarPreco(valorPorVaga);
-  const capacidadeNumero = Math.trunc(parseNumero(capacidadeTotal));
-  const vagasReservadasNumero = Math.trunc(parseNumero(vagasReservadasAdmin));
+  const preco = calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal });
 
   if (!nome) return res.status(400).json({ error: 'Nome e obrigatorio' });
-  if (!Number.isFinite(valorTotalNumero) || !Number.isFinite(valorPorVagaNumero)) return res.status(400).json({ error: 'Valor total e valor por vaga sao obrigatorios' });
-  if (!Number.isFinite(capacidadeNumero) || capacidadeNumero <= 0) return res.status(400).json({ error: 'Capacidade total deve ser maior que zero' });
-  if (!Number.isFinite(vagasReservadasNumero) || vagasReservadasNumero < 0) return res.status(400).json({ error: 'Vagas reservadas do admin deve ser zero ou mais' });
-  if (vagasReservadasNumero > capacidadeNumero) return res.status(400).json({ error: 'Vagas reservadas nao podem exceder a capacidade' });
+  if (!preco.valido) return res.status(400).json({ error: preco.mensagem, campo: preco.motivo });
   if (!categoria || !CATEGORIAS_PERMITIDAS.includes(categoria)) return res.status(400).json({ error: 'Categoria invalida' });
 
   const beneficiosParsed = parseLista(beneficios);
@@ -96,18 +93,14 @@ async function handleCreate(req, res, db) {
   if (faqParsed.length > 20) return res.status(400).json({ error: 'Maximo de 20 itens no FAQ permitidos' });
 
   const imagemFinal = imageUrl || capa || '';
-  const vagasDisponiveisNumero =
-    typeof vagasDisponiveis === 'number'
-      ? Math.trunc(parseNumero(vagasDisponiveis))
-      : Math.max(capacidadeNumero - vagasReservadasNumero, 0);
+  const vagasDisponiveisNumero = Math.max(preco.capacidade - VAGAS_DONO, 0);
 
   const adminNome = adminUser?.nome || adminUser?.name || adminUser?.email || 'Administrador';
   const adminAvatar = adminUser?.image || adminUser?.avatar || '';
 
   const novoGrupo = {
     nome, slug: slugify(nome), capa: imagemFinal, imageUrl: imageUrl || imagemFinal, imageKey,
-    valorTotal: new Double(valorTotalNumero), valorPorVaga: new Double(valorPorVagaNumero), descricao,
-    capacidadeTotal: new Int32(capacidadeNumero), vagasReservadasAdmin: new Int32(vagasReservadasNumero),
+    ...camposPrecoParaGravar(preco), descricao,
     vagasDisponiveis: new Int32(vagasDisponiveisNumero),
     servicoPreAssinado: Boolean(servicoPreAssinado), envioAutomaticoAcesso: Boolean(envioAutomaticoAcesso),
     filaEsperaAtiva: Boolean(filaEsperaAtiva), necessitaAnalise: Boolean(necessitaAnalise),
@@ -146,7 +139,7 @@ async function handleCreate(req, res, db) {
   await logAudit({
     action: 'grupo.created', actorId: String(adminId), actorEmail: session.user.email,
     targetId: String(resultado.insertedId), targetCollection: 'grupos',
-    details: { nome: novoGrupo.nome, categoria: novoGrupo.categoria, valorPorVaga: valorPorVagaNumero },
+    details: { nome: novoGrupo.nome, categoria: novoGrupo.categoria, ...resumoPrecoAuditoria(novoGrupo) },
     ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
   });
 

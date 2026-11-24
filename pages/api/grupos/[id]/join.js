@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]';
 import { INVOICE_STATUS, getInvoiceById } from '../../../../lib/invoices';
+import { VAGAS_DONO } from '../../../../lib/preco';
 
 const parseObjectId = (valor) => {
   if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
@@ -133,7 +134,7 @@ export default async function handler(req, res) {
       .collection('grupos')
       .findOne(
         { _id: grupoId },
-        { projection: { capacidadeTotal: 1, vagasReservadasAdmin: 1, acesso: 1, status: 1, statusDetalhado: 1, nome: 1 } }
+        { projection: { capacidadeTotal: 1, acesso: 1, status: 1, statusDetalhado: 1, nome: 1 } }
       );
 
     if (!grupo) {
@@ -175,7 +176,7 @@ export default async function handler(req, res) {
 
     let vagasDisponiveis = null;
     if (capacidade !== Infinity) {
-      const reservadas = Math.max(parseNumero(grupo.vagasReservadasAdmin, 0), 0);
+      const reservadas = VAGAS_DONO; // vaga do dono, sempre 1 (003-preco-por-vaga, D-04)
       const membrosNaoAdmin = membros.filter((m) => m.papel !== 'admin').length + 1; // inclui o novo membro
       vagasDisponiveis = Math.max(capacidade - reservadas - membrosNaoAdmin, 0);
     }

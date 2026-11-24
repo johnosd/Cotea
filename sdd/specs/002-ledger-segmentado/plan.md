@@ -246,7 +246,8 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | US2 resumo na carteira | Concluída; `/wallet` conferida pelo usuário com caução semeada em 2 grupos |
 | US3 visões do financeiro | Concluída; 403 para `user`/`support`, 200 e saldo correto para `finance` (Playwright) |
 | US4 rotina de consistência | Concluída; execução pelo painel com sucesso e 0 achados (4.2 coberto por testes) |
-| Polish | Concluído; feature Implementada |
+| Polish | Concluído |
+| Convergência (Phase 8) | T037 (deploy em produção, PR #5) e T038 (SC-003 em todas as categorias bloqueadas, 13 casos) concluídas; T039 (alerta pelo painel) aguarda outro dia |
 
 ## Riscos e Decisões
 
@@ -283,26 +284,14 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | 2026-11-24 | T033 (parcial) | Usuário rodou --aplicar e setupDatabase.js; conferido via MCP: 13 lançamentos em pessoal com operacaoId/organizacaoId, índices operacaoId_1_walletId_1_categoria_1_type_1 e walletId_1_categoria_1_status_1, wallets._id='plataforma' | quickstart 2–4 com login |
 | 2026-11-24 | Fase 7 (Polish, parcial) | Fluxos 16/18/19, `CLAUDE.md`, `AGENTS.md`, B-06 parcial; `npm run lint` 0 erros (5 avisos antigos), `npm run build` ok, `npm test` 79/79, `test:contrato` 10/10, travas íntegras | T033: `--aplicar`, `setupDatabase.js` e quickstart 2–4 com login |
 | 2026-11-24 | T033 (final) | Quickstart 2–4: concorrência real 3× ok; caução conferida na tela e removida; 403/200 por papel via Playwright com `systemRole` temporário (restaurado); rotina pelo painel com sucesso e 0 achados | Nenhuma da feature; achado fora de escopo no rebaixamento de papel (ver Cuidados) |
+| 2026-11-24 | Phase 8 (Convergence) | T037: 002 em produção (PR #5), rotas respondem sem 500; T038: `tests/ledger/categorias-bloqueadas.test.js` 13/13, `npm test` 92/92, contratos 10/10, travas íntegras | T039 em outro dia |
 
-**PRÓXIMO**: `sdd-converge 002-ledger-segmentado`; commits sugeridos separando 001, 002 e o ajuste de auth
+**PRÓXIMO**: T039 num dia seguinte (lançamento sem categoria no banco dev → executar `ledger-consistencia` pela aba Rotinas → ver alerta → remover), depois `sdd-converge 002-ledger-segmentado`
 
 ## Arquivos Principais
 
 <!-- Sobrescrita a cada checkpoint — foco da etapa atual, não a árvore inteira. -->
 
-- `lib/ledger/ledger.js` — núcleo (resumo, operações, trava, idempotência)
-- `lib/ledger/repositorio-mongo.js`, `lib/ledger/servidor.js` — transação Mongo e montagem
-- `lib/ledger/saque.js` — aprovar/rejeitar saque via `liquidarReserva`
-- `lib/ledger/apresentacao.js` — `mapearSaldosLegados` (compat de `calculateBalances`)
-- `lib/ledger/migracao.js`, `scripts/migrar-ledger-categorias.js` — migração dos legados
-- `pages/api/{pix/simulated/confirm,wallet/pay,assinaturas/pay,assinaturas/refund,withdraw/create,withdraw/approve,withdraw/reject}.js`
-
-## Cuidados para Retomada
-
-<!-- Armadilhas operacionais específicas desta feature, anexadas conforme descobertas. -->
-
-- Scripts em `scripts/` rodam como ESM por detecção de sintaxe (Node 22): o aviso `MODULE_TYPELESS_PACKAGE_JSON` é esperado e inofensivo; não adicionar `"type": "module"` ao `package.json` (mudaria o build do Next).
-- `lib/invoices.js` ainda devolve `.value` em `markInvoicePaid`/`markInvoiceRefunded` (B-06, fora do escopo): por isso `assinaturas/pay` e `refund` caem no fallback `invoice._id`/`ESTORNADA` na resposta — comportamento igual ao de antes.
-- `withTransaction` devolve o resultado guardado em variável de closure em `repositorio-mongo.js` (não depender do retorno do driver).
-- Para testar papéis sem outra conta Google: trocar `users.systemRole` da conta logada no banco dev (o callback `jwt` relê a cada checagem de sessão). Para voltar, gravar `systemRole: 'user'` — **remover o campo não rebaixa** a sessão aberta (`usuario.systemRole || token.systemRole`).
-- Quickstart 4.2 só é reproduzível num dia em que `consistencia:<data>` ainda não foi processado (executor idempotente).
+- `tests/ledger/categorias-bloqueadas.test.js` — SC-003 para todas as categorias bloqueadas (T038)
+- `lib/rotinas/ledger-consistencia.js`, `lib/ledger/consistencia.js` — rotina diária e alerta (T039, quickstart 4.2)
+- `sdd/specs/002-ledger-segmentado/quickstart.md` §4.2 — roteiro do alerta pelo painel

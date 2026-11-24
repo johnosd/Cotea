@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { PERMISSIONS, hasRole } from '../../../lib/authz';
+import { precoDoGrupo, VAGAS_DONO } from '../../../lib/preco';
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -78,25 +79,29 @@ export default function GruposAdmin() {
             {gruposAdmin.map((grupo) => {
               const capacidade = Number(grupo.capacidadeTotal) || 0;
               const membrosAtivos = Number(grupo.membrosAtivos) || 0;
-              const reservadas = Number(grupo.vagasReservadasAdmin) || 0;
+              const reservadas = VAGAS_DONO;
               const vagasDisponiveisCalc = Math.max(capacidade - membrosAtivos, 0);
               const statusDetalhado =
                 grupo.statusDetalhado && grupo.statusDetalhado !== 'em_formacao' ? grupo.statusDetalhado : '';
               const grupoCompleto = capacidade > 0 && membrosAtivos >= capacidade;
               const statusLabel = grupoCompleto ? 'Completo' : grupo.status === 'inativo' ? 'Inativo' : 'Ativo';
-              const valorPorVagaInformado = Number(grupo.valorPorVaga);
-              const valorTotalNumero = Number(grupo.valorTotal);
-              const valorPorVaga =
-                Number.isFinite(valorPorVagaInformado) && valorPorVagaInformado > 0
-                  ? valorPorVagaInformado
-                  : Number.isFinite(valorTotalNumero) && capacidade > 0
-                  ? valorTotalNumero / capacidade
-                  : 0;
+              const preco = precoDoGrupo(grupo);
 
               return (
                 <tr key={grupo._id}>
                   <td className="border px-4 py-2">{grupo.nome}</td>
-                  <td className="border px-4 py-2">R$ {valorPorVaga.toFixed(2)}</td>
+                  <td className="border px-4 py-2">
+                    {preco.valido ? (
+                      <>
+                        <span className="font-semibold">R$ {preco.valorPorVaga.toFixed(2)}</span>
+                        <span className="block text-xs text-gray-500">
+                          repasse R$ {preco.repasse.toFixed(2)} + taxa R$ {preco.taxa.toFixed(2)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-red-600">Preco indisponivel</span>
+                    )}
+                  </td>
                   <td className="border px-4 py-2">{capacidade}</td>
                   <td className="border px-4 py-2">
                     {vagasDisponiveisCalc} / {reservadas}
