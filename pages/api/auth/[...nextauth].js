@@ -16,6 +16,8 @@ export const authOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      // Sempre mostra o seletor de contas: sem isso o Google reaproveita a conta logada e o logout não permite trocar de usuário.
+      authorization: { params: { prompt: "select_account" } },
     }),
   ],
   cookies: {

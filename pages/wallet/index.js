@@ -2,6 +2,80 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
+import { ORDEM_CATEGORIAS_BLOQUEADAS, ROTULOS_CATEGORIAS } from '../../lib/ledger/rotulos';
+
+const formatarReais = (valor) =>
+  Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// Resumo segmentado (002-ledger-segmentado, US2): disponível em destaque e
+// cada valor não disponível com explicação e grupo de origem.
+function ResumoCarteira({ balances }) {
+  const resumo = balances.resumo || {
+    total: balances.balance,
+    disponivel: balances.available,
+    saqueEmAndamento: balances.blockedDebits,
+    categorias: {},
+  };
+
+  const linhas = [];
+  if (Number(resumo.saqueEmAndamento) > 0) {
+    linhas.push({ chave: 'saqueEmAndamento', valor: resumo.saqueEmAndamento, porGrupo: [] });
+  }
+  for (const cat of ORDEM_CATEGORIAS_BLOQUEADAS) {
+    const item = resumo.categorias?.[cat];
+    if (item && Number(item.valor) !== 0) linhas.push({ chave: cat, valor: item.valor, porGrupo: item.porGrupo || [] });
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="p-5 rounded-lg border border-green-200 bg-green-50">
+        <p className="text-sm text-green-800">Saldo disponível</p>
+        <p className="text-3xl font-bold text-gray-900">{formatarReais(resumo.disponivel)}</p>
+        <p className="text-xs text-gray-600 mt-1">Pode ser usado em grupos ou sacado.</p>
+      </div>
+
+      <div className="p-4 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-between">
+        <p className="text-sm text-gray-600">Saldo total</p>
+        <p className="text-lg font-semibold text-gray-900">{formatarReais(resumo.total)}</p>
+      </div>
+
+      {linhas.length > 0 && (
+        <section aria-labelledby="valores-nao-disponiveis">
+          <h2 id="valores-nao-disponiveis" className="text-sm font-semibold text-gray-700 mb-2">
+            Valores que ainda não estão disponíveis
+          </h2>
+          <ul className="space-y-3">
+            {linhas.map((linha) => {
+              const info = ROTULOS_CATEGORIAS[linha.chave];
+              return (
+                <li key={linha.chave} className="p-4 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-gray-900">{info?.rotulo || linha.chave}</p>
+                    <p className="font-semibold text-gray-900">{formatarReais(linha.valor)}</p>
+                  </div>
+                  {info?.explicacao && <p className="text-xs text-gray-600 mt-1">{info.explicacao}</p>}
+                  {linha.porGrupo.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {linha.porGrupo.map((g) => (
+                        <li
+                          key={`${g.grupoId}-${g.participacaoId || ''}`}
+                          className="flex items-center justify-between text-sm text-gray-700"
+                        >
+                          <span>{g.grupoNome || 'Grupo removido'}</span>
+                          <span>{formatarReais(g.valor)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
 
 export default function WalletHome() {
   const { data: session, status } = useSession();
@@ -60,38 +134,7 @@ export default function WalletHome() {
           {loading && <p className="text-gray-500">Atualizando saldo...</p>}
           {error && <p className="text-red-600">{error}</p>}
 
-          {balances && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-              <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-500">Saldo disponível</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  R$ {Number(balances.available || 0).toFixed(2)}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-500">Saldo total</p>
-                <p className="text-2xl font-semibold text-gray-900">R$ {Number(balances.balance || 0).toFixed(2)}</p>
-              </div>
-              <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-500">Bloqueado para saque</p>
-                <p className="text-xl font-semibold text-gray-900">
-                  R$ {Number(balances.blockedDebits || 0).toFixed(2)}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-500">Valores pendentes</p>
-                <p className="text-xl font-semibold text-gray-900">
-                  R$ {Number(balances.pendingTotal || 0).toFixed(2)}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-500">Valores estornados</p>
-                <p className="text-xl font-semibold text-gray-900">
-                  R$ {Number(balances.returnedTotal || 0).toFixed(2)}
-                </p>
-              </div>
-            </div>
-          )}
+          {balances && <ResumoCarteira balances={balances} />}
         </div>
       </main>
     </>

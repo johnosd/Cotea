@@ -1,9 +1,12 @@
 import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
-import { getClient, getDb, insertLedgerEntry } from '../../../lib/mongodb';
+import { getDb } from '../../../lib/mongodb';
 import { INVOICE_STATUS, createInvoice, getInvoiceById, markInvoiceAwaitingTopUp, markInvoicePaid } from '../../../lib/invoices';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
+import { obterLedger } from '../../../lib/ledger/servidor';
+import { CATEGORIAS } from '../../../lib/ledger/categorias';
+import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
 
 const parseObjectId = (valor) => {
@@ -89,34 +92,40 @@ export default async function handler(req, res) {
       });
     }
 
-    const balances = await calculateBalances(wallet._id);
-    if (balances.available >= amount) {
-      const mongoClient = await getClient();
-      const txSession = mongoClient.startSession();
-      let ledgerEntry, updatedInvoice;
-      try {
-        await txSession.withTransaction(async () => {
-          ledgerEntry = await insertLedgerEntry({
-            walletId: wallet._id,
-            type: 'debit',
-            amount,
-            source: 'assinatura_grupo',
-            referenceId: invoice._id,
-            status: 'confirmed',
-            description: `Assinatura do grupo ${grupo?.nome || grupoIdRaw}`,
-          }, { session: txSession });
+    // Débito pessoal pelo núcleo (FR-008): o saldo é conferido dentro da
+    // transação e a fatura é marcada paga na MESMA transação (D-08).
+    const ledger = await obterLedger();
+    let operacao = null;
+    let saldoInsuficiente = null;
+    try {
+      operacao = await ledger.registrarOperacao({
+        operacaoId: `assinatura_grupo:${invoice._id}`,
+        source: 'assinatura_grupo',
+        referenceId: invoice._id,
+        descricao: `Assinatura do grupo ${grupo?.nome || grupoIdRaw}`,
+        pernas: [{
+          walletId: wallet._id,
+          type: 'debit',
+          categoria: CATEGORIAS.PESSOAL,
+          valor: amount,
+          grupoId: grupoIdRaw,
+          organizacaoId: null,
+        }],
+        extra: ({ sessao, lancamentos }) => markInvoicePaid({
+          invoiceId: invoice._id,
+          walletId: wallet._id,
+          ledgerId: lancamentos[0]._id,
+          paidAt: new Date(),
+        }, { session: sessao }),
+      });
+    } catch (err) {
+      if (!(err instanceof SaldoInsuficienteError)) throw err;
+      saldoInsuficiente = err;
+    }
 
-          updatedInvoice = await markInvoicePaid({
-            invoiceId: invoice._id,
-            walletId: wallet._id,
-            ledgerId: ledgerEntry._id,
-            paidAt: new Date(),
-          }, { session: txSession });
-        });
-      } finally {
-        await txSession.endSession();
-      }
-
+    if (operacao) {
+      const ledgerEntry = operacao.lancamentos[0];
+      const updatedInvoice = operacao.resultadoExtra;
       const updatedBalances = await calculateBalances(wallet._id);
 
       await logAudit({
@@ -140,18 +149,19 @@ export default async function handler(req, res) {
       });
     }
 
-    const faltante = Math.max(amount - balances.available, 0);
+    const saldoDisponivel = Number(saldoInsuficiente.disponivel) || 0;
+    const faltante = Math.max(Math.round((amount - saldoDisponivel) * 100) / 100, 0);
     const awaitingInvoice = await markInvoiceAwaitingTopUp({
       invoiceId: invoice._id,
       faltante,
-      saldoDisponivel: balances.available,
+      saldoDisponivel,
     });
 
     return res.status(200).json({
       invoiceId: awaitingInvoice?._id || invoice._id,
       status: INVOICE_STATUS.AGUARDANDO_RECARGA,
       faltante,
-      saldoDisponivel: balances.available,
+      saldoDisponivel,
       walletId: wallet._id,
       amount,
       grupoId: grupoIdRaw,

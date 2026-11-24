@@ -4,6 +4,8 @@
     "_id": { "bsonType": "string" },
     "userId": { "bsonType": "string" },
     "status": { "bsonType": "string" },
+    "tipo": { "enum": ["usuario", "plataforma"] },
+    "versaoLedger": { "bsonType": ["int", "long"] },
     "createdAt": { "bsonType": "date" }
   }
 }

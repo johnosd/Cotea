@@ -32,6 +32,7 @@ This is a **Next.js 14 (Pages Router)** app — a group subscription management 
   - `lib/mongodb.js` — DB connection + all collection accessors
   - `lib/authz.js` — RBAC permission helpers
   - `lib/wallet.js` — Wallet balance calculations and session helpers
+  - `lib/ledger/` — Segmented ledger core (pure, injected repository) + Mongo repository (`repositorio-mongo.js`) and server wiring (`servidor.js`)
   - `lib/r2.js` — Cloudflare R2 (S3-compatible) upload/delete/URL
   - `lib/invoices.js` — Invoice logic
 - `database/schemas/` — JSON Schema definitions for each MongoDB collection (documentation only — not enforced by application code)
@@ -51,6 +52,9 @@ Collections: `users`, `grupos`, `membrosGrupo`, `wallets`, `walletTransactions`,
 ### Payments & Wallet
 
 - Users have a `wallets` document; credits/debits are recorded in `walletTransactions` (status: `confirmed` | `blocked` | `pending` | `cancelled`).
+- **Every ledger entry goes through `obterLedger()` (`lib/ledger/servidor.js`)** — `registrarOperacao` / `mover` / `liquidarReserva`. Never insert into `walletTransactions` directly from a handler. Each entry has `categoria` (`pessoal`, `caucao`, `retido_entrada`, `recebivel_retido`, `disputa`, `receita_taxa`), `organizacaoId` (null = public), optional `grupoId`/`participacaoId`, and an idempotency key `operacaoId` (`<source>:<referenceId>`). Side effects that must commit with the entry go in `extra({ sessao, lancamentos })` using `{ session }`; `logAudit` only after commit.
+- Balances are always derived (integer cents): available (= withdrawable) = `pessoal` minus pending withdrawals (`blocked` debits). The platform account is `wallets._id = 'plataforma'` (only `receita_taxa`).
+- `lib/ledger/ledger.js`, `consistencia.js`, `migracao.js` must not import `lib/mongodb.js` (it validates env on import). Client pages import only `lib/ledger/rotulos.js`.
 - PIX payments are under `pages/api/pix/` and `pages/api/payments/`.
 - Subscription payments go through `pages/api/assinaturas/`.
 - Withdrawals have a request/approve/reject flow under `pages/api/withdraw/`.

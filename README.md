@@ -11,6 +11,8 @@ Plataforma de gerenciamento de assinaturas em grupo. Usuários entram em grupos 
 - **Armazenamento de arquivos:** Cloudflare R2 (compatível com S3)
 - **E-mail:** Nodemailer (Gmail)
 - **Estilização:** Tailwind CSS v3
+- **Deploy e rotinas agendadas:** Vercel (região `gru1`); a rota `/api/rotinas/executar` é chamada pelo Vercel Schedules a cada 15 min (`vercel.json`, ADR-001)
+- **Testes:** Vitest
 
 ## Pré-requisitos
 
@@ -63,16 +65,24 @@ R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=
 R2_PUBLIC_BASE_URL=
 R2_ENDPOINT=
+
+# Rotinas agendadas (/api/rotinas/executar; sem nenhuma das duas a rota responde 503)
+CRON_SECRET=                        # segredo enviado pela Vercel (Authorization: Bearer)
+ROTINAS_SECRET=                     # alternativa para execução local/outros agendadores
 ```
 
 ## Comandos
 
 ```bash
-npm run dev      # Servidor de desenvolvimento (http://localhost:3000)
-npm run build    # Build de produção
-npm run start    # Inicia servidor de produção
-npm run lint     # ESLint
+npm run dev            # Servidor de desenvolvimento (http://localhost:3000)
+npm run build          # Build de produção
+npm run start          # Inicia servidor de produção
+npm run lint           # ESLint
+npm test               # Testes (Vitest)
+npm run test:contrato  # Só os testes de contrato travados (tests/contract)
 ```
+
+No Windows, rode os testes a partir de `J:\Cotea` (drive em maiúscula); de `j:\` o Vitest carrega duas vezes e falha.
 
 ## Estrutura de pastas
 
@@ -88,7 +98,8 @@ cotea/
 │   │   ├── pix/              # PIX simulado (criar/confirmar)
 │   │   ├── payments/         # Listagem de pagamentos
 │   │   ├── upload/           # Upload/remoção de imagens (R2)
-│   │   └── admin/            # Gerenciamento de usuários e auditoria
+│   │   ├── rotinas/          # Disparo das rotinas agendadas (protegido por segredo)
+│   │   └── admin/            # Usuários, auditoria, rotinas e calendário de dias úteis
 │   ├── admin/                # Painel administrativo (role-gated)
 │   ├── assinatura/           # Fluxo de assinatura de grupo
 │   ├── wallet/               # Carteira: saldo, recarga, saque, faturas
@@ -102,12 +113,16 @@ cotea/
 │   └── notificacoes.js       # Central de notificações
 ├── components/
 │   ├── Header.js             # Cabeçalho com busca
-│   └── FlowStepper.js        # Indicador de etapas
+│   ├── FlowStepper.js        # Indicador de etapas
+│   └── admin/                # Abas do painel (Rotinas, datas extras do calendário)
 ├── lib/
 │   ├── mongodb.js            # Conexão e helpers de coleção
 │   ├── authz.js              # RBAC (roles e permissões)
 │   ├── wallet.js             # Cálculo de saldo e helpers de sessão
 │   ├── invoices.js           # Lógica de faturas
+│   ├── calendario.js         # Prazos em dias corridos/úteis (horário de Brasília, feriados nacionais)
+│   ├── calendario-dados.js   # Leitura/validação das datas extras não úteis
+│   ├── rotinas/              # Executor idempotente de rotinas, repositório Mongo, rotina de saúde, alertas
 │   ├── r2.js                 # Upload/delete/URL no Cloudflare R2
 │   ├── audit.js              # Registro de auditoria
 │   ├── encryption.js         # Criptografia de dados sensíveis
@@ -118,6 +133,7 @@ cotea/
 ├── database/
 │   └── schemas/              # Schemas JSON (documentação — não são enforced)
 ├── middleware.js             # Autenticação e verificação de conta
+├── vercel.json               # Região, tempo máximo das funções e schedule das rotinas
 ├── next.config.mjs           # Config Next.js (headers de segurança, imagens)
 └── jsconfig.json             # Alias @/* → raiz do projeto
 ```
@@ -126,7 +142,7 @@ cotea/
 
 O middleware (`middleware.js`) protege todas as rotas não públicas:
 
-- **Rotas públicas:** home, detalhe de grupo, cadastro, verificação, signin
+- **Rotas públicas:** home, detalhe de grupo, cadastro, verificação, signin, e `/api/rotinas/executar` (agendador; exige `Authorization: Bearer <CRON_SECRET ou ROTINAS_SECRET>`)
 - **Rotas autenticadas:** todas as demais (redireciona para `/auth/signin`)
 - **Rotas verificadas:** wallet, assinaturas, admin, meus-grupos (exige `contaValidada`)
 
@@ -149,6 +165,10 @@ O middleware (`middleware.js`) protege todas as rotas não públicas:
 | `notificacoesUsuario` | Notificações por usuário |
 | `logsAcessoGrupo` | Auditoria de acesso aos grupos |
 | `verificationCodes` | Códigos de verificação de e-mail |
+| `rotinaItens` | Itens processados por rotina (índice único `rotinaId + chave` garante o efeito uma única vez) |
+| `rotinaExecucoes` | Histórico de execuções das rotinas (TTL de 90 dias) |
+| `calendarioDatasExtras` | Datas não úteis extras mantidas pelo admin |
+| `rotinaSaudeSondas` | Sondas de teste da rotina de saúde (TTL de 7 dias) |
 
 ## Segurança
 

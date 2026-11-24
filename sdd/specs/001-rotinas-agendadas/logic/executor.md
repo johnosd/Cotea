@@ -29,8 +29,10 @@ interface de referência `tests/helpers/repositorio-rotinas-memoria.js` (travada
 ```
 opcoes: repo (obrigatório), agora = new Date(), origem = 'automatica', autorId = null,
         alertar = async () => {}, contexto = {}, limite = 500,
-        leaseMs = LEASE_PADRAO_MS (10 min), maxTentativas = MAX_TENTATIVAS (5)
+        leaseMs = LEASE_PADRAO_MS (10 min), maxTentativas = MAX_TENTATIVAS (5),
+        prazoMs = null (sem limite de tempo; T035), relogio = Date.now (injetável nos testes)
 
+t0 = relogio()
 execucaoId = await repo.iniciarExecucao({ rotinaId: rotina.id, origem, autorId, inicio: agora })
 c = { processados: 0, ignorados: 0, falhas: 0, pulados: 0 }
 try:
@@ -39,7 +41,9 @@ catch e:
   await repo.finalizarExecucao(execucaoId, { fim: new Date(), resultado: 'erro', ...c, erro: msg(e) })
   return { execucaoId, resultado: 'erro', ...c }          // NÃO relança
 
-for item of vencidos.slice(0, limite):                    // SEQUENCIAL (for...of + await)
+for (i, item) of vencidos.slice(0, limite):               // SEQUENCIAL (for...of + await)
+  if prazoMs && i > 0 && relogio() - t0 >= prazoMs:       // T035: orçamento de tempo estourado
+    restantes = (itens da lista) - i; break               // o resto fica p/ a próxima execução
   claim = await repo.reivindicarItem({ rotinaId, chave: item.chave, dados: item.dados ?? {}, agora, leaseMs })
   if !claim.reivindicado: c.pulados++; continue
   try:
@@ -55,7 +59,7 @@ for item of vencidos.slice(0, limite):                    // SEQUENCIAL (for...o
 
 resultado = c.falhas === 0 ? 'sucesso' : (c.processados + c.ignorados > 0 ? 'parcial' : 'erro')
 await repo.finalizarExecucao(execucaoId, { fim: new Date(), resultado, ...c })
-return { execucaoId, resultado, ...c }
+return { execucaoId, resultado, ...c, ...(restantes > 0 ? { cortada: true, restantes } : {}) }
 
 msg(e) = String(e?.message ?? e).slice(0, 500)   // sem stack
 ```
@@ -69,10 +73,20 @@ Pontos que parecem contraintuitivos:
 2. **`agora` é fixo por execução**: usado para lease, `concluidoEm` e para
    decidir vencimento. Não chame `new Date()` dentro do loop (só no `fim`).
 3. **Falha de `alertar` não vira falha do item**: o item já está
-   `falha_definitiva`; o alerta é melhor esforço (logado).
+   `falha_definitiva`; o alerta é melhor esforço (logado). Dentro do
+   `criarAlertaAdmins`, a auditoria `rotina.item_falha_definitiva` é gravada
+   mesmo se a notificação falhar (FR-020, T037); só então o erro da
+   notificação é relançado para o log do executor.
 4. **Item `falha` volta a ser tentado** só se `buscarVencidos` o devolver de
    novo. Se a condição de negócio sumiu, ele fica `falha` parado; o painel
    mostra e o admin decide.
+6. **Orçamento de tempo (`prazoMs`)**: as rotas de disparo passam
+   `PRAZO_EXECUCAO_MS` (45 s, `lib/rotinas/dependencias.js`), abaixo do
+   `maxDuration` de 60 s de `vercel.json`. O 1º item da lista é sempre tentado
+   (progresso garantido) e o tempo de `buscarVencidos` conta no orçamento. Itens
+   cortados nem são reivindicados: voltam na próxima execução. Medido no banco
+   de desenvolvimento: ~74 ms por item (500 itens ≈ 37 s). A chamada automática
+   reparte o mesmo orçamento entre as rotinas.
 5. **Idempotência do mecanismo ≠ idempotência do efeito**: se o processo morrer
    depois do efeito e antes de `concluirItem`, o item volta após o lease e roda
    de novo. Por isso toda `processarItem` que movimenta dinheiro DEVE ser

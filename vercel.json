@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["gru1"],
+  "functions": {
+    "pages/api/rotinas/executar.js": { "maxDuration": 60 },
+    "pages/api/admin/rotinas/*/executar.js": { "maxDuration": 60 }
+  },
   "schedules": {
     "rotinas": {
       "schedule": "*/15 * * * *",

@@ -1,8 +1,13 @@
+import { randomUUID } from 'crypto';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
-import { getClient, insertLedgerEntry, insertWithdrawal } from '../../../lib/mongodb';
+import { insertWithdrawal } from '../../../lib/mongodb';
 import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
 import { encryptCPF } from '../../../lib/encryption';
+import { obterLedger } from '../../../lib/ledger/servidor';
+import { CATEGORIAS } from '../../../lib/ledger/categorias';
+import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
+import { logAudit } from '../../../lib/audit';
 
 const CPF_REGEX = /^\d{11}$/;
 
@@ -32,36 +37,57 @@ export default async function handler(req, res) {
     }
 
     const wallet = await ensureWallet(userId);
-    const balances = await calculateBalances(wallet._id);
-    if (amount > balances.available) {
-      return res.status(400).json({ error: 'Saldo insuficiente para saque' });
-    }
+    const ledger = await obterLedger();
 
-    const mongoClient = await getClient();
-    const txSession = mongoClient.startSession();
-    let withdrawal, ledgerEntry;
+    // O id do saque existe antes da operação: ele compõe o operacaoId (D-05).
+    const withdrawalId = randomUUID();
+    const pixKeyCpf = encryptCPF(cpfPixKey);
+
+    // Reserva (débito blocked de pessoal) com saldo conferido dentro da
+    // transação, carteira travada (FR-008/FR-010); o saque é criado na MESMA
+    // transação (D-08).
+    let operacao;
     try {
-      await txSession.withTransaction(async () => {
-        withdrawal = await insertWithdrawal({
-          userId,
-          walletId: wallet._id,
-          pixKeyCpf: encryptCPF(cpfPixKey),
-          amount,
-          status: 'requested',
-        }, { session: txSession });
-
-        ledgerEntry = await insertLedgerEntry({
+      operacao = await ledger.registrarOperacao({
+        operacaoId: `saque:${withdrawalId}`,
+        source: 'saque',
+        referenceId: withdrawalId,
+        pernas: [{
           walletId: wallet._id,
           type: 'debit',
-          amount,
-          source: 'saque',
-          referenceId: withdrawal._id,
+          categoria: CATEGORIAS.PESSOAL,
+          valor: amount,
           status: 'blocked',
-        }, { session: txSession });
+          organizacaoId: null,
+        }],
+        extra: ({ sessao }) => insertWithdrawal({
+          _id: withdrawalId,
+          userId,
+          walletId: wallet._id,
+          pixKeyCpf,
+          amount,
+          status: 'requested',
+        }, { session: sessao }),
       });
-    } finally {
-      await txSession.endSession();
+    } catch (err) {
+      if (err instanceof SaldoInsuficienteError) {
+        return res.status(400).json({ error: 'Saldo insuficiente para saque' });
+      }
+      throw err;
     }
+    const withdrawal = operacao.resultadoExtra;
+    const ledgerEntry = operacao.lancamentos[0];
+
+    // Auditoria só depois do commit (R-003); sem CPF.
+    await logAudit({
+      action: 'withdrawal.requested',
+      actorId: String(userId),
+      actorEmail: session.user.email,
+      targetId: withdrawalId,
+      targetCollection: 'withdrawals',
+      details: { amount, walletId: String(wallet._id), ledgerId: String(ledgerEntry._id) },
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+    });
 
     const updatedBalances = await calculateBalances(wallet._id);
 

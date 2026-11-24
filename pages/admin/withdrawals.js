@@ -2,6 +2,31 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
 import { PERMISSIONS, hasRole } from '../../lib/authz';
+import { ORDEM_CATEGORIAS_BLOQUEADAS, ROTULOS_CATEGORIAS } from '../../lib/ledger/rotulos';
+
+const formatarReais = (valor) =>
+  Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// Saldo segmentado do dono do saque (002, US3-AC1).
+function SaldoUsuario({ resumo }) {
+  const bloqueadas = ORDEM_CATEGORIAS_BLOQUEADAS.filter((c) => Number(resumo.categorias?.[c]?.valor) !== 0);
+  return (
+    <dl className="mt-2 text-sm text-gray-700 grid grid-cols-2 gap-x-4 gap-y-1 p-2 rounded bg-gray-50 border">
+      <dt>Disponível</dt>
+      <dd className="font-semibold text-right">{formatarReais(resumo.disponivel)}</dd>
+      <dt>{ROTULOS_CATEGORIAS.saqueEmAndamento.rotulo}</dt>
+      <dd className="font-semibold text-right">{formatarReais(resumo.saqueEmAndamento)}</dd>
+      {bloqueadas.map((c) => (
+        <div key={c} className="contents">
+          <dt>{ROTULOS_CATEGORIAS[c].rotulo}</dt>
+          <dd className="font-semibold text-right">{formatarReais(resumo.categorias[c].valor)}</dd>
+        </div>
+      ))}
+      <dt>Total</dt>
+      <dd className="font-semibold text-right">{formatarReais(resumo.total)}</dd>
+    </dl>
+  );
+}
 
 export default function AdminWithdrawals() {
   const { data: session, status } = useSession();
@@ -12,7 +37,38 @@ export default function AdminWithdrawals() {
 
   const canList = useMemo(() => hasRole(session, PERMISSIONS.WITHDRAWALS_TAB), [session]);
   const canAct = useMemo(() => hasRole(session, ['admin', 'finance']), [session]);
+  const canVerLedger = useMemo(() => hasRole(session, PERMISSIONS.LEDGER_FINANCEIRO), [session]);
   const isBlocked = Boolean(session?.user?.isBlocked);
+  const [saldos, setSaldos] = useState({}); // withdrawalId -> { carregando, erro, resumo }
+  const [receita, setReceita] = useState({ carregando: false, erro: '', dados: null });
+
+  const carregarSaldo = async (withdrawalId) => {
+    setSaldos((prev) => ({ ...prev, [withdrawalId]: { carregando: true, erro: '', resumo: null } }));
+    try {
+      const res = await fetch(`/api/withdraw/resumo-usuario?withdrawalId=${encodeURIComponent(withdrawalId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Erro ao carregar saldo do usuario');
+      setSaldos((prev) => ({ ...prev, [withdrawalId]: { carregando: false, erro: '', resumo: data.resumo } }));
+    } catch (err) {
+      setSaldos((prev) => ({ ...prev, [withdrawalId]: { carregando: false, erro: err.message, resumo: null } }));
+    }
+  };
+
+  const carregarReceita = async () => {
+    setReceita({ carregando: true, erro: '', dados: null });
+    try {
+      const res = await fetch('/api/admin/plataforma/receita?limite=20');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Erro ao carregar receita');
+      setReceita({ carregando: false, erro: '', dados: data });
+    } catch (err) {
+      setReceita({ carregando: false, erro: err.message, dados: null });
+    }
+  };
+
+  useEffect(() => {
+    if (status === 'authenticated' && canVerLedger && !isBlocked) carregarReceita();
+  }, [status, canVerLedger, isBlocked]);
 
   const load = async () => {
     setLoading(true);
@@ -102,6 +158,19 @@ export default function AdminWithdrawals() {
                       </p>
                       <p className="text-sm text-gray-700">Status: {w.status}</p>
                       <p className="text-sm text-gray-700">PIX CPF: {w.pixKeyCpf}</p>
+                      {canVerLedger && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => carregarSaldo(w._id)}
+                            className="text-sm text-blue-700 underline disabled:opacity-50"
+                            disabled={saldos[w._id]?.carregando}
+                          >
+                            {saldos[w._id]?.carregando ? 'Carregando saldo...' : 'Ver saldo do usuário'}
+                          </button>
+                          {saldos[w._id]?.erro && <p className="text-sm text-red-600">{saldos[w._id].erro}</p>}
+                          {saldos[w._id]?.resumo && <SaldoUsuario resumo={saldos[w._id].resumo} />}
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2 mt-3 sm:mt-0">
                       <button
@@ -134,6 +203,47 @@ export default function AdminWithdrawals() {
                   </div>
                 ))}
               </div>
+
+              {canVerLedger && (
+                <section className="mt-8" aria-labelledby="receita-cotea">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 id="receita-cotea" className="text-lg font-semibold">Receita do Cotea</h2>
+                    <button
+                      onClick={carregarReceita}
+                      className="px-3 py-2 rounded bg-gray-100 text-gray-700 border hover:bg-gray-200 disabled:opacity-50"
+                      disabled={receita.carregando}
+                    >
+                      {receita.carregando ? 'Atualizando...' : 'Atualizar'}
+                    </button>
+                  </div>
+                  {receita.erro && <p className="text-red-600">{receita.erro}</p>}
+                  {receita.dados && (
+                    <>
+                      <p className="text-sm text-gray-700 mb-2">
+                        Total: <span className="font-semibold">{formatarReais(receita.dados.total)}</span>
+                      </p>
+                      {receita.dados.lancamentos.length === 0 ? (
+                        <p className="text-gray-600">Nenhuma receita registrada ainda.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {receita.dados.lancamentos.map((l) => (
+                            <li key={l._id} className="text-sm text-gray-700 flex justify-between border-b py-1">
+                              <span>
+                                {new Date(l.createdAt).toLocaleString('pt-BR')} · {l.source}
+                                {l.referenceId ? ` · ${l.referenceId}` : ''}
+                              </span>
+                              <span className="font-semibold">
+                                {l.type === 'debit' ? '−' : ''}
+                                {formatarReais(l.amount)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
             </>
           )}
         </div>
