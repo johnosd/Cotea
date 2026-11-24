@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-24
 
-**Status**: Implementada
+**Status**: Convergida
 
 **Input**: Backlog `V2-03 · P0 · Regra única de preço por vaga (taxa Cotea 5%)
 e capacidade mínima` — calcular no servidor

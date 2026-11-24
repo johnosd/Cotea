@@ -401,7 +401,7 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | --- | --- | --- | --- | --- |
 | 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
-| 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Implementada | 38/38 tasks | 2026-11-24 |
+| 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
 
 ## Melhorias Ad-hoc
 
@@ -415,4 +415,4 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | Slug | Título | Fase Atual | Veredito/Status | Próximo Passo | Última Atualização |
 | --- | --- | --- | --- | --- | --- |
 | get-grupo-expoe-dados-internos | GET /api/grupos/[id] expõe dados internos sem sessão | Test | verified | Concluído | 2026-11-24 |
-| admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | verified | Concluído | 2026-11-24 |

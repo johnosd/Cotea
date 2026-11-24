@@ -84,6 +84,8 @@ npm run test:contrato  # Só os testes de contrato travados (tests/contract)
 
 No Windows, rode os testes a partir de `J:\Cotea` (drive em maiúscula); de `j:\` o Vitest carrega duas vezes e falha.
 
+Migração de preços dos grupos (regra única de preço por vaga): `node --env-file=.env.local scripts/migrar-precos-grupos.js` mostra o que mudaria; com `--aplicar` grava. No deploy, rode antes e de novo depois de publicar o código.
+
 ## Estrutura de pastas
 
 ```
@@ -120,6 +122,7 @@ cotea/
 │   ├── authz.js              # RBAC (roles e permissões)
 │   ├── wallet.js             # Cálculo de saldo e helpers de sessão
 │   ├── invoices.js           # Lógica de faturas
+│   ├── preco.js              # Regra única de preço por vaga (taxa Cotea de 5%, capacidade mínima 2)
 │   ├── calendario.js         # Prazos em dias corridos/úteis (horário de Brasília, feriados nacionais)
 │   ├── calendario-dados.js   # Leitura/validação das datas extras não úteis
 │   ├── rotinas/              # Executor idempotente de rotinas, repositório Mongo, rotina de saúde, alertas
@@ -132,6 +135,7 @@ cotea/
 │   └── env.js                # Validação de variáveis de ambiente
 ├── database/
 │   └── schemas/              # Schemas JSON (documentação — não são enforced)
+├── scripts/                  # Scripts operacionais (migrações com dry-run por padrão e --aplicar para gravar)
 ├── middleware.js             # Autenticação e verificação de conta
 ├── vercel.json               # Região, tempo máximo das funções e schedule das rotinas
 ├── next.config.mjs           # Config Next.js (headers de segurança, imagens)
