@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Header from '../../components/Header';
+import CadastroFinanceiroForm, { ehCadastroIncompleto } from '../../components/CadastroFinanceiroForm';
 
 export default function WalletPay() {
   const { status } = useSession();
@@ -12,9 +13,10 @@ export default function WalletPay() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // 004-cadastro-financeiro (US3): pendências devolvidas pela API abrem o formulário embutido.
+  const [pendenciasCadastro, setPendenciasCadastro] = useState(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const enviar = async () => {
     setError('');
     setResult(null);
     setLoading(true);
@@ -25,6 +27,10 @@ export default function WalletPay() {
         body: JSON.stringify({ amount: Number(amount), description }),
       });
       const data = await res.json();
+      if (ehCadastroIncompleto(data)) {
+        setPendenciasCadastro(data.pendencias);
+        return;
+      }
       if (!res.ok) throw new Error(data?.error || 'Erro ao usar saldo');
       setResult(data);
       setTimeout(() => router.push('/wallet'), 800);
@@ -33,6 +39,11 @@ export default function WalletPay() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    enviar();
   };
 
   const isAuth = status === 'authenticated';
@@ -50,6 +61,19 @@ export default function WalletPay() {
           </div>
 
           {!isAuth && <p className="text-red-600">Faça login para usar saldo.</p>}
+
+          {pendenciasCadastro && (
+            <div className="mt-4">
+              <CadastroFinanceiroForm
+                pendencias={pendenciasCadastro}
+                onCancelar={() => setPendenciasCadastro(null)}
+                onSalvo={() => {
+                  setPendenciasCadastro(null);
+                  enviar();
+                }}
+              />
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             <div>

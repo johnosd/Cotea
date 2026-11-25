@@ -1,77 +1,38 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Header from '../../components/Header';
+import CadastroFinanceiroForm, { ehCadastroIncompleto } from '../../components/CadastroFinanceiroForm';
 
 export default function WalletAdd() {
   const { status } = useSession();
   const router = useRouter();
   const [amount, setAmount] = useState('');
-  const [cpfPix, setCpfPix] = useState('');
-  const [cpfTouched, setCpfTouched] = useState(false);
-  const [erroCpf, setErroCpf] = useState('');
   const [payment, setPayment] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState('');
+  // 004-cadastro-financeiro (US3): pendências devolvidas pela API abrem o formulário embutido.
+  const [pendenciasCadastro, setPendenciasCadastro] = useState(null);
 
-  const validarCpf = (cpf) => {
-    if (!cpf) return false;
-    const num = cpf.replace(/\D/g, '');
-    if (num.length !== 11 || /^(\d)\1{10}$/.test(num)) return false;
-    const calc = (base) => {
-      let sum = 0;
-      for (let i = 0; i < base.length; i += 1) {
-        sum += Number(num[i]) * (base.length + 1 - i);
-      }
-      const mod = (sum * 10) % 11;
-      return mod === 10 ? 0 : mod;
-    };
-    return calc('123456789') === Number(num[9]) && calc('1234567890') === Number(num[10]);
-  };
-
-  const atualizarErroCpf = (valor, touched) => {
-    if (!touched) {
-      setErroCpf('');
-      return;
-    }
-    if (!valor) {
-      setErroCpf('Informe o CPF para pagar via Pix.');
-      return;
-    }
-    if (valor.length !== 11) {
-      setErroCpf('CPF deve ter 11 digitos.');
-      return;
-    }
-    if (!validarCpf(valor)) {
-      setErroCpf('CPF invalido.');
-      return;
-    }
-    setErroCpf('');
-  };
-
-  const cpfValido = useMemo(() => cpfPix.length === 11 && validarCpf(cpfPix), [cpfPix]);
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const criarPagamento = async () => {
     setError('');
-    setErroCpf('');
-    if (!cpfValido) {
-      setCpfTouched(true);
-      atualizarErroCpf(cpfPix, true);
-      return;
-    }
     setPayment(null);
     setLoading(true);
     try {
       const res = await fetch('/api/pix/simulated/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: Number(amount), cpf: cpfPix }),
+        // 004-cadastro-financeiro (FR-015): o Pix usa o CPF do cadastro; a tela não pede CPF.
+        body: JSON.stringify({ amount: Number(amount) }),
       });
       const data = await res.json();
+      if (ehCadastroIncompleto(data)) {
+        setPendenciasCadastro(data.pendencias);
+        return;
+      }
       if (!res.ok) throw new Error(data?.error || 'Erro ao criar pagamento');
       setPayment(data);
     } catch (err) {
@@ -79,6 +40,11 @@ export default function WalletAdd() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCreate = (e) => {
+    e.preventDefault();
+    criarPagamento();
   };
 
   const handleConfirm = async () => {
@@ -123,6 +89,19 @@ export default function WalletAdd() {
 
           {!isAuth && <p className="text-red-600">Faça login para adicionar saldo.</p>}
 
+          {pendenciasCadastro && (
+            <div className="mt-4">
+              <CadastroFinanceiroForm
+                pendencias={pendenciasCadastro}
+                onCancelar={() => setPendenciasCadastro(null)}
+                onSalvo={() => {
+                  setPendenciasCadastro(null);
+                  criarPagamento();
+                }}
+              />
+            </div>
+          )}
+
           <form onSubmit={handleCreate} className="space-y-4 mt-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
@@ -138,29 +117,7 @@ export default function WalletAdd() {
                 disabled={!isAuth || loading}
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">CPF do pagador (Pix)</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={14}
-                placeholder="Digite o CPF (apenas numeros)"
-                value={cpfPix}
-                onChange={(e) => {
-                  const onlyDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
-                  setCpfPix(onlyDigits);
-                  if (cpfTouched) atualizarErroCpf(onlyDigits, true);
-                }}
-                onBlur={() => {
-                  setCpfTouched(true);
-                  atualizarErroCpf(cpfPix, true);
-                }}
-                className="w-full border rounded px-3 py-2"
-                disabled={!isAuth || loading}
-                required
-              />
-              {erroCpf && <p className="text-sm text-red-600 mt-1">{erroCpf}</p>}
-            </div>
+            <p className="text-xs text-gray-600">O Pix sera gerado com o CPF do seu cadastro financeiro.</p>
             <button
               type="submit"
               className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"

@@ -26,6 +26,9 @@ async function createIndexes() {
 
   console.log('Criando índices...');
 
+  // users — um CPF por conta (004-cadastro-financeiro, D-02); criar depois da migração de CPFs.
+  await db.collection('users').createIndex({ cpfHash: 1 }, { unique: true, partialFilterExpression: { cpfHash: { $type: 'string' } }, name: 'cpfHash_unico' });
+
   // membrosGrupo — suporta o $match inicial em /api/meus-grupos
   await db.collection('membrosGrupo').createIndex({ userId: 1, status: 1 });
 

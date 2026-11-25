@@ -4,6 +4,7 @@ import { insertPayment } from '../../../../lib/mongodb';
 import { ensureWallet, getSessionUserId, normalizeAmount } from '../../../../lib/wallet';
 import { checkRateLimit } from '../../../../lib/ratelimit';
 import { encryptCPF } from '../../../../lib/encryption';
+import { verificarCadastroFinanceiro } from '../../../../lib/cadastro-financeiro-servidor';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -21,6 +22,10 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Conta nao verificada. Confirme seu e-mail para realizar pagamentos.' });
     }
 
+    // 004-cadastro-financeiro (D-03): cadastro financeiro completo antes de qualquer efeito.
+    const verificacao = await verificarCadastroFinanceiro(userId);
+    if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
+
     const { allowed } = await checkRateLimit({
       key: `pix:${userId}`,
       max: 5,
@@ -31,32 +36,18 @@ export default async function handler(req, res) {
     }
 
     const amount = normalizeAmount(req.body?.amount);
-    const cpfRaw = String(req.body?.cpf || '').replace(/\D/g, '');
-    const validarCpf = (cpf) => {
-      if (!cpf || cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
-      const calc = (base) => {
-        let sum = 0;
-        for (let i = 0; i < base.length; i += 1) {
-          sum += Number(cpf[i]) * (base.length + 1 - i);
-        }
-        const mod = (sum * 10) % 11;
-        return mod === 10 ? 0 : mod;
-      };
-      return calc('123456789') === Number(cpf[9]) && calc('1234567890') === Number(cpf[10]);
-    };
-
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: 'Valor invalido' });
     }
-    if (!validarCpf(cpfRaw)) {
-      return res.status(400).json({ error: 'CPF invalido para pagamento Pix' });
-    }
+    // 004-cadastro-financeiro (FR-015, D-07): o CPF do PIX é sempre o do perfil,
+    // já validado pelo gate; qualquer `cpf` enviado pelo cliente é ignorado.
+    const cpfDoPerfil = verificacao.cpf;
 
     const wallet = await ensureWallet(userId);
     const payment = await insertPayment({
       userId,
       gateway: 'simulated',
-      pixCpf: encryptCPF(cpfRaw),
+      pixCpf: encryptCPF(cpfDoPerfil),
       amount,
       status: 'pending',
     });

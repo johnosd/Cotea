@@ -35,6 +35,12 @@ vi.mock('../../lib/ledger/servidor', () => ({
   })),
 }));
 
+// 004-cadastro-financeiro: o gate de cadastro financeiro é testado em tests/cadastro e no contrato 004;
+// aqui o usuário tem cadastro completo para o handler seguir como antes.
+vi.mock('../../lib/cadastro-financeiro-servidor', () => ({
+  verificarCadastroFinanceiro: vi.fn(async () => ({ ok: true, cpf: '52998224725', usuario: {} })),
+}));
+
 const { default: handlerPay } = await import('../../pages/api/assinaturas/pay.js');
 
 const membroId = new ObjectId();

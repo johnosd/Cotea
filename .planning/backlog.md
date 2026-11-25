@@ -36,16 +36,8 @@ notificações, conta e auditoria (V2-22 a V2-26).
 
 #### Cadastro, aprovação e entrada
 
-- **V2-04 · P1 · Cadastro financeiro sob demanda e permissões de conta** —
-  Especificar o estado "cadastro financeiro completo" separado de
-  `contaValidada`, exigido só ao concluir o primeiro pagamento/depósito, saque
-  ou criação de grupo (formulário pode ser preenchido antes). Validar CPF com
-  dígito verificador também no perfil; definir se o CPF do PIX é salvo no
-  perfil. Usuário bloqueado não cria grupo, mas paga, participa e saca.
-  Fonte: RN:161-176, 242, 345-368, 1005. Evidência: perfil só confere 11
-  dígitos (`pages/api/atualizarPerfil.js:69-72`), enquanto o PIX valida o
-  algoritmo (`pages/api/pix/simulated/create.js:35-53`); a criação de grupo
-  exige só conta validada (`pages/api/grupos/index.js:66-74`).
+- **V2-04** — especificada em `sdd/specs/004-cadastro-financeiro/spec.md` (ver
+  `## Features`).
 
 - **V2-05 · P0 · Aprovação, moderação e visibilidade de grupos públicos** —
   Estados `em_aprovacao`, `ajustes`, `rejeitado`, `suspenso`, `cancelado` e
@@ -352,6 +344,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
+| 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Em Execução | 39/60 tasks | 2026-11-25 |
 
 ## Melhorias Ad-hoc
 

@@ -1,0 +1,12 @@
+{
+  "feature": "004-cadastro-financeiro",
+  "lockedAt": "2026-11-25 18:31",
+  "total": 5,
+  "files": [
+    {
+      "path": "tests/contract/004-cadastro-financeiro.contract.test.js",
+      "sha256": "01674ab9e419e034896b680274d5161ddc89bd2abfaf6cf3a0b75594f951fa4d",
+      "tests": 5
+    }
+  ]
+}

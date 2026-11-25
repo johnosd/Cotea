@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Header from '../../../components/Header';
 import PrevisaoPreco from '../../../components/PrevisaoPreco';
+import CadastroFinanceiroForm, { ehCadastroIncompleto } from '../../../components/CadastroFinanceiroForm';
 import { calcularPrecoVaga, MOTIVOS_PRECO_INVALIDO, VAGAS_DONO } from '../../../lib/preco';
 
 export default function NovoGrupo() {
@@ -56,6 +57,9 @@ export default function NovoGrupo() {
   const [sucesso, setSucesso] = useState('');
   const [criando, setCriando] = useState(false);
   const [errors, setErrors] = useState({});
+  // 004-cadastro-financeiro (US3): criar grupo exige cadastro financeiro completo;
+  // o formulário embutido completa e reenvia o mesmo grupo (estado preservado).
+  const [pendenciasCadastro, setPendenciasCadastro] = useState(null);
 
   // Mesma regra que o servidor usa para gravar (lib/preco.js, 003-preco-por-vaga).
   const preco = useMemo(
@@ -107,8 +111,12 @@ export default function NovoGrupo() {
     setErrors(novoErrors);
     return Object.keys(novoErrors).length === 0;
   };
-  const handleCriar = async (e) => {
+  const handleCriar = (e) => {
     e.preventDefault();
+    criarGrupo();
+  };
+
+  const criarGrupo = async () => {
     setMsg('');
     setSucesso('');
     const valido = validateForm();
@@ -175,6 +183,12 @@ export default function NovoGrupo() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (ehCadastroIncompleto(errData)) {
+          setPendenciasCadastro(errData.pendencias);
+          setMsg('Complete seu cadastro financeiro para criar o grupo.');
+          setCriando(false);
+          return;
+        }
         throw new Error(errData.error || 'Erro ao criar grupo.');
       }
 
@@ -735,6 +749,17 @@ export default function NovoGrupo() {
                 {errors.faq && <p className={errorClass}>{errors.faq}</p>}
               </div>
             </section>
+
+            {pendenciasCadastro && (
+              <CadastroFinanceiroForm
+                pendencias={pendenciasCadastro}
+                onCancelar={() => setPendenciasCadastro(null)}
+                onSalvo={() => {
+                  setPendenciasCadastro(null);
+                  criarGrupo();
+                }}
+              />
+            )}
 
             <div className="sticky bottom-0 bg-gray-50 py-4 border-t border-gray-200">
               <div className="max-w-5xl mx-auto">

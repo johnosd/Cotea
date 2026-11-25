@@ -2,6 +2,9 @@ import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import Header from "../components/Header";
+import EnderecoCampos, { ENDERECO_VAZIO } from "../components/EnderecoCampos";
+import { validarCpf } from "../lib/cadastro-financeiro";
+import { mascararCPF } from "../lib/cpf-mascara";
 
 export default function Perfil() {
   const { data: session, status, update } = useSession();
@@ -13,21 +16,16 @@ export default function Perfil() {
   const [telefone, setTelefone] = useState("");
   const [username, setUsername] = useState("");
   const [cpf, setCpf] = useState("");
+  // 004-cadastro-financeiro: depois de salvo, o CPF fica travado e só aparece mascarado.
+  const [cpfTravado, setCpfTravado] = useState(false);
+  const [cpfMascarado, setCpfMascarado] = useState("");
+  const [errosCampos, setErrosCampos] = useState({});
   const [contaValidada, setContaValidada] = useState(false);
   const [saldoDisponivel, setSaldoDisponivel] = useState(0);
   const [saldoCaucao, setSaldoCaucao] = useState(0);
   const [usa2FA, setUsa2FA] = useState(false);
   const [pinSeguranca, setPinSeguranca] = useState("");
-  const [endereco, setEndereco] = useState({
-    cep: "",
-    uf: "",
-    cidade: "",
-    bairro: "",
-    rua: "",
-    numero: "",
-    complemento: "",
-  });
-  const [cepStatus, setCepStatus] = useState("");
+  const [endereco, setEndereco] = useState(ENDERECO_VAZIO);
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,17 +35,6 @@ export default function Perfil() {
     () => (nome?.[0] || session?.user?.name?.[0] || session?.user?.email?.[0] || "U").toUpperCase(),
     [nome, session?.user]
   );
-
-  const cepLimpo = useMemo(() => (endereco.cep || "").replace(/\D/g, ""), [endereco.cep]);
-
-  const limparCamposEndereco = () =>
-    setEndereco((prev) => ({
-      ...prev,
-      uf: "",
-      cidade: "",
-      bairro: "",
-      rua: "",
-    }));
 
   useEffect(() => {
     const carregarPerfil = async () => {
@@ -76,7 +63,9 @@ export default function Perfil() {
         setImagem(user.image || "");
         setTelefone(user.telefone || "");
         setUsername(user.username || "");
-        setCpf(user.cpf || "");
+        setCpf("");
+        setCpfTravado(Boolean(user.cpfTravado));
+        setCpfMascarado(user.cpfMascarado || "");
         setContaValidada(Boolean(user.contaValidada));
         setSaldoDisponivel(Number(user.saldoDisponivel) || 0);
         setSaldoCaucao(Number(user.saldoCaucao) || 0);
@@ -99,59 +88,17 @@ export default function Perfil() {
     carregarPerfil();
   }, [status, session]);
 
-  useEffect(() => {
-    if (!cepLimpo) {
-      setCepStatus("");
-      return;
-    }
-
-    if (cepLimpo.length !== 8) {
-      setCepStatus("CEP deve ter 8 digitos.");
-      limparCamposEndereco();
-      return;
-    }
-
-    const controller = new AbortController();
-    const buscarCep = async () => {
-      setCepStatus("Buscando endereco...");
-      try {
-        const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`, { signal: controller.signal });
-        if (!res.ok) {
-          throw new Error("Formato de CEP invalido");
-        }
-
-        const data = await res.json();
-        if (data?.erro) {
-          setCepStatus("CEP nao encontrado.");
-          limparCamposEndereco();
-          return;
-        }
-
-        setCepStatus("");
-        setEndereco((prev) => ({
-          ...prev,
-          cep: cepLimpo,
-          uf: data.uf || "",
-          cidade: data.localidade || "",
-          bairro: data.bairro || "",
-          rua: data.logradouro || "",
-        }));
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        setCepStatus("Erro ao buscar CEP.");
-        limparCamposEndereco();
-      }
-    };
-
-    buscarCep();
-
-    return () => controller.abort();
-  }, [cepLimpo]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMensagem("");
     setErro("");
+    setErrosCampos({});
+    const cpfDigitos = cpf.replace(/\D/g, "");
+    if (!cpfTravado && cpfDigitos && !validarCpf(cpfDigitos)) {
+      setErrosCampos({ cpf: "CPF invalido." });
+      setAba("endereco");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -160,15 +107,28 @@ export default function Perfil() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, nome, sobrenome, imagem, telefone, username, cpf, endereco }),
+        // CPF travado não é reenviado (o servidor ignoraria de qualquer forma).
+        body: JSON.stringify({ email, nome, sobrenome, imagem, telefone, username, cpf: cpfTravado ? undefined : cpfDigitos, endereco }),
       });
 
       if (response.ok) {
         setMensagem("Perfil atualizado com sucesso!");
+        if (!cpfTravado && cpfDigitos) {
+          setCpfTravado(true);
+          setCpfMascarado(mascararCPF(cpfDigitos));
+          setCpf("");
+        }
         await update();
       } else {
         const data = await response.json();
         setErro(data.message || "Erro ao atualizar perfil.");
+        if (data.campos) {
+          setErrosCampos(data.campos);
+          setAba("endereco");
+        } else if (data.codigo === "cpf_indisponivel") {
+          setErrosCampos({ cpf: data.message });
+          setAba("endereco");
+        }
       }
     } catch (error) {
       setErro("Erro ao atualizar perfil.");
@@ -268,85 +228,34 @@ export default function Perfil() {
 
           {aba === "endereco" && (
             <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="CPF"
-                value={cpf}
-                onChange={(e) => setCpf(e.target.value)}
-                className="w-full p-3 border rounded"
-              />
-              <fieldset className="border rounded p-3">
-                <legend className="text-sm font-semibold text-gray-700 px-2">Endereco</legend>
-                <input
-                  type="text"
-                  placeholder="CEP"
-                  value={endereco.cep}
-                  maxLength={8}
-                  pattern="\d{8}"
-                  inputMode="numeric"
-                  autoComplete="postal-code"
-                  onChange={(e) => {
-                    const rawCep = e.target.value.replace(/\D/g, "");
-                    setEndereco((prev) => ({ ...prev, cep: rawCep }));
-                    if (!rawCep) {
-                      setCepStatus("");
-                    }
-                  }}
-                  className="w-full p-2 mb-2 border rounded"
-                />
-                {cepStatus && (
-                  <div className={`text-xs mb-1 ${cepStatus.startsWith("Buscando") ? "text-blue-600" : "text-red-600"}`}>
-                    {cepStatus}
-                  </div>
-                )}
-                <div className="flex gap-2">
+              {cpfTravado ? (
+                <div>
                   <input
                     type="text"
-                    placeholder="UF"
-                    value={endereco.uf}
-                    onChange={(e) => setEndereco((prev) => ({ ...prev, uf: e.target.value }))}
-                    className="w-20 p-2 mb-2 border rounded"
-                    maxLength={2}
+                    aria-label="CPF"
+                    value={cpfMascarado}
+                    readOnly
+                    className="w-full p-3 border rounded bg-gray-50 text-gray-600"
                   />
-                  <input
-                    type="text"
-                    placeholder="Cidade"
-                    value={endereco.cidade}
-                    onChange={(e) => setEndereco((prev) => ({ ...prev, cidade: e.target.value }))}
-                    className="flex-1 p-2 mb-2 border rounded"
-                  />
+                  <p className="text-xs text-gray-500 mt-1">CPF confirmado. Para corrigir, fale com o suporte.</p>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Bairro"
-                  value={endereco.bairro}
-                  onChange={(e) => setEndereco((prev) => ({ ...prev, bairro: e.target.value }))}
-                  className="w-full p-2 mb-2 border rounded"
-                />
-                <input
-                  type="text"
-                  placeholder="Rua"
-                  value={endereco.rua}
-                  onChange={(e) => setEndereco((prev) => ({ ...prev, rua: e.target.value }))}
-                  className="w-full p-2 mb-2 border rounded"
-                />
-                <div className="flex gap-2">
+              ) : (
+                <div>
                   <input
                     type="text"
-                    placeholder="Numero"
-                    value={endereco.numero}
-                    onChange={(e) => setEndereco((prev) => ({ ...prev, numero: e.target.value }))}
-                    className="w-24 p-2 mb-2 border rounded"
+                    placeholder="CPF"
+                    aria-label="CPF"
+                    inputMode="numeric"
+                    maxLength={14}
+                    value={cpf}
+                    onChange={(e) => setCpf(e.target.value)}
+                    className="w-full p-3 border rounded"
                   />
-                  <input
-                    type="text"
-                    placeholder="Complemento"
-                    value={endereco.complemento}
-                    onChange={(e) => setEndereco((prev) => ({ ...prev, complemento: e.target.value }))}
-                    className="flex-1 p-2 mb-2 border rounded"
-                  />
+                  <p className="text-xs text-gray-500 mt-1">Depois de salvo, o CPF nao pode ser alterado por voce.</p>
+                  {errosCampos.cpf && <p className="text-sm text-red-600 mt-1">{errosCampos.cpf}</p>}
                 </div>
-              </fieldset>
+              )}
+              <EnderecoCampos endereco={endereco} onChange={setEndereco} erro={errosCampos.endereco} />
             </div>
           )}
 

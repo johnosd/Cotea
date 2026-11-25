@@ -10,6 +10,7 @@ import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
 import { precoDoGrupo } from '../../../lib/preco';
 import { avaliarEntradaNoGrupo } from '../../../lib/grupo-entrada';
+import { verificarCadastroFinanceiro } from '../../../lib/cadastro-financeiro-servidor';
 
 // Unicos status de fatura existente que o pay pode cobrar (ou reabrir para recarga).
 const STATUS_FATURA_COBRAVEL = [INVOICE_STATUS.AGUARDANDO_PAGAMENTO, INVOICE_STATUS.AGUARDANDO_RECARGA];
@@ -35,6 +36,10 @@ export default async function handler(req, res) {
     if (!session.user.contaValidada) {
       return res.status(403).json({ error: 'Conta nao verificada. Confirme seu e-mail para assinar grupos.' });
     }
+
+    // 004-cadastro-financeiro (D-03): cadastro financeiro completo antes de qualquer efeito.
+    const verificacao = await verificarCadastroFinanceiro(userId);
+    if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
 
     const grupoIdRaw = String(req.body?.grupoId || '').trim();
     const invoiceIdRaw = String(req.body?.invoiceId || '').trim() || null;

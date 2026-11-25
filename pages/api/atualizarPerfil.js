@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "./auth/[...nextauth]";
 import clientPromise from "../../lib/mongodb";
-import { decryptCPF, encryptCPF } from "../../lib/encryption";
+import { resumoCadastroFinanceiro, salvarCadastroFinanceiro } from "../../lib/cadastro-financeiro-perfil";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
@@ -26,9 +26,10 @@ export default async function handler(req, res) {
       const user = await db.collection("users").findOne({ email });
       if (!user) return res.status(404).json({ message: "Usuario nao encontrado." });
 
-      const { systemRole, isBlocked, ...dadosPublicos } = user;
-      if (dadosPublicos.cpf) dadosPublicos.cpf = decryptCPF(dadosPublicos.cpf);
-      return res.status(200).json(dadosPublicos);
+      // 004-cadastro-financeiro (D-04): o CPF nunca sai completo, nem para o admin.
+      const { systemRole, isBlocked, cpf, cpfHash, cpfLegadoInvalido, ...dadosPublicos } = user;
+      const { cpfMascarado, cpfTravado } = resumoCadastroFinanceiro(user);
+      return res.status(200).json({ ...dadosPublicos, cpfMascarado, cpfTravado });
     } catch (error) {
       console.error("Erro ao carregar perfil:", error);
       return res.status(500).json({ message: "Erro ao carregar perfil." });
@@ -47,7 +48,7 @@ export default async function handler(req, res) {
     telefone,
     username,
     cpf,
-    endereco = {},
+    endereco,
   } = req.body;
 
   if (!email || !username || !nome || !sobrenome) {
@@ -66,11 +67,6 @@ export default async function handler(req, res) {
   if (usernameLimpo.length > 30) return res.status(400).json({ message: "Username deve ter no maximo 30 caracteres." });
   if (!/^[a-zA-Z0-9._-]+$/.test(usernameLimpo)) return res.status(400).json({ message: "Username deve conter apenas letras, numeros, ponto, hifen ou underscore." });
 
-  const cpfDigitos = String(cpf || "").replace(/\D/g, "");
-  if (cpfDigitos && cpfDigitos.length !== 11) {
-    return res.status(400).json({ message: "CPF deve conter 11 digitos." });
-  }
-
   try {
     const usuarioAtual = await db.collection("users").findOne({ email });
     if (!usuarioAtual) {
@@ -86,16 +82,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "Nome de usuario ja esta em uso por outro usuario." });
     }
 
+    // CPF e endereço passam pelas regras do cadastro financeiro (004, D-05):
+    // dígito verificador, CPF único e travado, CEP consultado. Com erro, nada é gravado.
     const str = (v, max) => String(v || "").slice(0, max);
-    const enderecoSanitizado = {
-      cep:         str(endereco.cep, 9),
-      uf:          str(endereco.uf, 2),
-      cidade:      str(endereco.cidade, 100),
-      bairro:      str(endereco.bairro, 100),
-      rua:         str(endereco.rua, 200),
-      numero:      str(endereco.numero, 20),
-      complemento: str(endereco.complemento, 100),
+    const enderecoLimitado = {
+      cep:         str(endereco?.cep, 9),
+      uf:          str(endereco?.uf, 2),
+      cidade:      str(endereco?.cidade, 100),
+      bairro:      str(endereco?.bairro, 100),
+      rua:         str(endereco?.rua, 200),
+      numero:      str(endereco?.numero, 20),
+      complemento: str(endereco?.complemento, 100),
     };
+    const cadastro = await salvarCadastroFinanceiro({
+      userId: usuarioAtual._id,
+      usuario: usuarioAtual,
+      enviado: endereco === undefined ? { cpf } : { cpf, endereco: enderecoLimitado },
+    });
+    if (!cadastro.ok) {
+      return res.status(cadastro.http).json({ message: cadastro.error, codigo: cadastro.codigo, campos: cadastro.campos });
+    }
 
     await db.collection("users").updateOne(
       { email },
@@ -106,8 +112,6 @@ export default async function handler(req, res) {
           image: imagem,
           telefone,
           username: usernameLimpo,
-          cpf: encryptCPF(cpfDigitos),
-          endereco: enderecoSanitizado,
         },
       }
     );

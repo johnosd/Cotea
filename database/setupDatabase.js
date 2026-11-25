@@ -57,6 +57,9 @@ async function run() {
     await createCollection("users", usersSchema);
     await db.collection("users").createIndex({ email: 1 }, { unique: true });
     await db.collection("users").createIndex({ username: 1 }, { unique: true, sparse: true });
+    // 004-cadastro-financeiro (D-02): um CPF por conta, pela impressão digital HMAC (o CPF cifrado tem IV aleatório).
+    // Criar depois da migração de CPFs (scripts/migrar-cpf-usuarios.js): CPFs repetidos impedem o índice.
+    await db.collection("users").createIndex({ cpfHash: 1 }, { unique: true, partialFilterExpression: { cpfHash: { $type: "string" } }, name: "cpfHash_unico" });
 
     // 3) Membros do grupo
     const membrosSchema = await loadSchema("membrosGrupo.schema.json");

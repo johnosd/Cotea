@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
 import FlowStepper from '../../components/FlowStepper';
 import { NOTA_TAXA_COTEA } from '../../components/PrevisaoPreco';
+import CadastroFinanceiroForm, { ehCadastroIncompleto } from '../../components/CadastroFinanceiroForm';
 import { precoDoGrupo } from '../../lib/preco';
 
 export default function Pagamento() {
@@ -14,9 +15,6 @@ export default function Pagamento() {
   const { grupoId, nome } = router.query;
   const [metodo, setMetodo] = useState('saldo');
   const [mostrarCupom, setMostrarCupom] = useState(false);
-  const [cpfPix, setCpfPix] = useState('');
-  const [cpfTouched, setCpfTouched] = useState(false);
-  const [erroCpf, setErroCpf] = useState('');
   const [saldo, setSaldo] = useState(null);
   const [saldoErro, setSaldoErro] = useState('');
   const [saldoCarregando, setSaldoCarregando] = useState(false);
@@ -24,6 +22,8 @@ export default function Pagamento() {
   const [erroPagamento, setErroPagamento] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [invoiceId, setInvoiceId] = useState('');
+  // 004-cadastro-financeiro (US3): pendências devolvidas por pay/pix abrem o formulário embutido.
+  const [pendenciasCadastro, setPendenciasCadastro] = useState(null);
   const [grupo, setGrupo] = useState(null);
   const [grupoCarregando, setGrupoCarregando] = useState(true);
   const grupoNome = grupo?.nome || nome || 'Grupo';
@@ -64,14 +64,6 @@ export default function Pagamento() {
 
   const sessionUserId =
     session?.user?.id || session?.user?._id || session?.user?.sub || session?.user?.userId || session?.user?.uid || '';
-
-  // Limpa validacao se sair do Pix
-  useEffect(() => {
-    if (metodo !== 'pix') {
-      setErroCpf('');
-      setCpfTouched(false);
-    }
-  }, [metodo]);
 
   useEffect(() => {
     if (metodo === 'saldo' && !saldoCarregando && !saldoSuficiente) {
@@ -127,53 +119,16 @@ export default function Pagamento() {
     }
   }, [session]);
 
-  const validarCpf = (cpf) => {
-    if (!cpf) return false;
-    const num = cpf.replace(/\D/g, '');
-    if (num.length !== 11 || /^(\d)\1{10}$/.test(num)) return false;
-    const calc = (base) => {
-      let sum = 0;
-      for (let i = 0; i < base.length; i += 1) {
-        sum += Number(num[i]) * (base.length + 1 - i);
-      }
-      const mod = (sum * 10) % 11;
-      return mod === 10 ? 0 : mod;
-    };
-    return calc('123456789') === Number(num[9]) && calc('1234567890') === Number(num[10]);
-  };
-
-  const atualizarErroCpf = (valor, touched) => {
-    if (metodo !== 'pix') {
-      setErroCpf('');
-      return;
-    }
-    if (!touched) {
-      setErroCpf('');
-      return;
-    }
-    if (!valor) {
-      setErroCpf('Informe o CPF para pagar via Pix.');
-      return;
-    }
-    if (valor.length !== 11) {
-      setErroCpf('CPF deve ter 11 digitos.');
-      return;
-    }
-    if (!validarCpf(valor)) {
-      setErroCpf('CPF invalido.');
-      return;
-    }
-    setErroCpf('');
-  };
-
-  const cpfValido = metodo === 'pix' ? (cpfPix.length === 11 && validarCpf(cpfPix)) : true;
-  const podeFinalizar = precoGrupo.valido && (metodo === 'saldo' || cpfValido);
+  // 004-cadastro-financeiro (FR-015): o Pix usa o CPF do cadastro; a tela não pede CPF.
+  const podeFinalizar = precoGrupo.valido;
 
   // Erro de API preservando `codigo`/`estornada` para o tratamento abaixo.
   const erroDaApi = (data, padrao) => {
     const erro = new Error(data?.error || padrao);
     erro.codigo = data?.codigo;
     erro.estornada = data?.estornada === true;
+    erro.cadastroIncompleto = ehCadastroIncompleto(data);
+    erro.pendencias = data?.pendencias;
     return erro;
   };
 
@@ -201,15 +156,15 @@ export default function Pagamento() {
     return data;
   };
 
-  const confirmarPix = async (valor, cpf) => {
+  const confirmarPix = async (valor) => {
     const createRes = await fetch('/api/pix/simulated/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: valor, cpf }),
+      body: JSON.stringify({ amount: valor }),
     });
     const createData = await createRes.json();
     if (!createRes.ok) {
-      throw new Error(createData?.error || 'Erro ao gerar pagamento Pix');
+      throw erroDaApi(createData, 'Erro ao gerar pagamento Pix');
     }
     const confirmRes = await fetch('/api/pix/simulated/confirm', {
       method: 'POST',
@@ -246,14 +201,8 @@ export default function Pagamento() {
       setErroPagamento('Grupo nao identificado. Volte e tente novamente.');
       return;
     }
-    if (metodo === 'pix' && !cpfValido) {
-      setCpfTouched(true);
-      atualizarErroCpf(cpfPix, true);
-      return;
-    }
 
     setErroPagamento('');
-    setErroCpf('');
     setMensagem('');
     setProcessando(true);
 
@@ -273,7 +222,7 @@ export default function Pagamento() {
         const faltante = Number(pagamento.faltante || precoNumero);
         const valorPix = (Number.isFinite(faltante) ? faltante : precoNumero) + 0.68;
         setMensagem('Gerando Pix e creditando saldo...');
-        await confirmarPix(valorPix, cpfPix);
+        await confirmarPix(valorPix);
         pagamento = await pagarFaturaAssinatura(pagamento.invoiceId);
       }
 
@@ -291,6 +240,12 @@ export default function Pagamento() {
 
       router.push(`/assinatura/sucesso${query.toString() ? `?${query.toString()}` : ''}`);
     } catch (error) {
+      // Cadastro financeiro incompleto (pay ou pix recusaram antes de cobrar):
+      // abre o formulário e, ao salvar, repete a mesma finalização.
+      if (error?.cadastroIncompleto) {
+        setPendenciasCadastro(error.pendencias);
+        return;
+      }
       // Fatura estornada ou ja usada: descarta para o retry gerar uma nova.
       const mensagemInutilizavel = MENSAGENS_FATURA_INUTILIZAVEL[error?.codigo];
       if (mensagemInutilizavel) {
@@ -399,28 +354,7 @@ export default function Pagamento() {
           </section>
 
           {metodo === 'pix' && (
-            <section className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-2">
-              <p className="text-sm font-semibold text-gray-900">CPF do pagador</p>
-              <p className="text-xs text-gray-600">Use o CPF para gerar a chave Pix corretamente.</p>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={14}
-                placeholder="Digite o CPF (apenas numeros)"
-                value={cpfPix}
-                onChange={(e) => {
-                  const onlyDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
-                  setCpfPix(onlyDigits);
-                  if (cpfTouched) atualizarErroCpf(onlyDigits, true);
-                }}
-                onBlur={() => {
-                  setCpfTouched(true);
-                  atualizarErroCpf(cpfPix, true);
-                }}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {erroCpf && <p className="text-sm text-red-600">{erroCpf}</p>}
-            </section>
+            <p className="text-xs text-gray-600">O Pix sera gerado com o CPF do seu cadastro financeiro.</p>
           )}
 
           <section className="bg-white border border-gray-100 rounded-2xl shadow-sm">
@@ -448,6 +382,16 @@ export default function Pagamento() {
 
           {!grupoCarregando && !precoGrupo.valido && (
             <p className="text-sm text-red-600">O preco deste grupo esta indisponivel no momento. Nao e possivel assinar agora.</p>
+          )}
+          {pendenciasCadastro && (
+            <CadastroFinanceiroForm
+              pendencias={pendenciasCadastro}
+              onCancelar={() => setPendenciasCadastro(null)}
+              onSalvo={() => {
+                setPendenciasCadastro(null);
+                handleFinalizar();
+              }}
+            />
           )}
           {erroPagamento && <p className="text-sm text-red-600">{erroPagamento}</p>}
           {mensagem && <p className="text-sm text-blue-700">{mensagem}</p>}

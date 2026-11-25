@@ -15,6 +15,7 @@ import {
   resumoPrecoAuditoria,
 } from '../../../lib/grupos-utils';
 import { calcularPrecoVaga, VAGAS_DONO } from '../../../lib/preco';
+import { verificarCadastroFinanceiro } from '../../../lib/cadastro-financeiro-servidor';
 
 async function handleList(db, res) {
   const grupos = await db
@@ -82,6 +83,10 @@ async function handleCreate(req, res, db) {
   if (adminUser.isBlocked === true || session.user.isBlocked === true) {
     return res.status(403).json({ error: 'Conta bloqueada. Voce nao pode criar grupos. Procure o suporte.' });
   }
+
+  // 004-cadastro-financeiro (D-03): cadastro financeiro completo antes de qualquer efeito.
+  const verificacao = await verificarCadastroFinanceiro(adminId);
+  if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
 
   const preco = calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal });
 
