@@ -33,3 +33,12 @@ O sintoma nao reproduz mais: bloqueado (por banco ou sessao) recebe 403 e nada e
 ## Recommendation
 
 Fechar B-05 como corrigido. Opcionalmente tratar o aviso na tela e esclarecer a regra da linha 545.
+
+## Verificação E2E (2026-11-25)
+
+Executada com Playwright contra `next dev` local (porta 3000), sessão Google real
+(`admin`) e o banco de produção `usaComigo`, com autorização do usuário. Dados de
+teste com prefixo `E2E` (2 usuários, 4 grupos, recarga PIX simulada de R$ 50),
+removidos ao final; saldo da carteira conferido igual ao de antes.
+
+- Com `isBlocked: true` só no banco (JWT ainda sem bloqueio), `POST /api/grupos` → 403 "Conta bloqueada..."; bloqueio revertido em seguida.

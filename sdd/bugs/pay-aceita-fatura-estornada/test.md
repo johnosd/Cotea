@@ -4,7 +4,7 @@
 - **Testado**: 2026-11-24
 - **Assessment**: ./assessment.md
 - **Fix**: ./fix.md
-- **Result**: partial
+- **Result**: verified
 
 ## Summary
 
@@ -36,3 +36,15 @@ Test Files  34 passed (34)
 ## Recommendation
 
 Segurar o fechamento ate checagem manual com Mongo real (reenviar `invoiceId` estornado e confirmar 409 sem novo debito) e decisao do usuario sobre recusar vs. emitir fatura nova no retry. Codigo e testes automatizados estao completos, sem regressao detectada.
+
+## Verificação E2E (2026-11-25)
+
+Executada com Playwright contra `next dev` local (porta 3000), sessão Google real
+(`admin`) e o banco de produção `usaComigo`, com autorização do usuário. Dados de
+teste com prefixo `E2E` (2 usuários, 4 grupos, recarga PIX simulada de R$ 50),
+removidos ao final; saldo da carteira conferido igual ao de antes.
+
+- `pay` com `invoiceId` estornado → 409 `fatura_estornada`; saldo inalterado.
+- Tela de pagamento: após o estorno, novo clique em "Finalizar pagamento" (sem recarregar) enviou `pay` sem `invoiceId`, gerou fatura nova e concluiu a entrada (redirecionou para `/assinatura/sucesso`).
+
+O sintoma original não reproduz mais no ambiente real; resultado elevado de `partial` para `verified`.

@@ -4,7 +4,7 @@
 - **Testado**: 2026-11-24
 - **Assessment**: ./assessment.md
 - **Fix**: ./fix.md
-- **Result**: partial
+- **Result**: verified
 
 ## Summary
 
@@ -37,3 +37,16 @@ Test Files  32 passed (32)
 ## Recommendation
 
 Segurar o fechamento do item ate uma checagem manual em ambiente com Mongo real (pagar grupo cancelado/cheio e confirmar que nao ha debito, e que o `join` forcado estorna). Codigo e testes automatizados estao completos; sem regressao detectada.
+
+## Verificação E2E (2026-11-25)
+
+Executada com Playwright contra `next dev` local (porta 3000), sessão Google real
+(`admin`) e o banco de produção `usaComigo`, com autorização do usuário. Dados de
+teste com prefixo `E2E` (2 usuários, 4 grupos, recarga PIX simulada de R$ 50),
+removidos ao final; saldo da carteira conferido igual ao de antes.
+
+- `pay` em grupo cancelado → 409 `grupo_indisponivel`; grupo cheio → 409 `grupo_cheio`; grupo próprio → 409 `dono_do_grupo`; já membro → 409 `ja_membro`. Saldo e faturas inalterados (nenhuma fatura criada).
+- Pagar grupo ativo, cancelar o grupo no banco e chamar `join` → 409 `grupo_indisponivel` com `estornada: true`; saldo restaurado; 1 lançamento `estorno_assinatura`.
+- Pela tela `/assinatura/pagamento` (join retido 25 s e grupo cancelado no intervalo): mensagem "Grupo indisponivel para novas entradas. O pagamento foi estornado para o seu saldo."
+
+O sintoma original não reproduz mais no ambiente real; resultado elevado de `partial` para `verified`.

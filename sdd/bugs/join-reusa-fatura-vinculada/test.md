@@ -4,7 +4,7 @@
 - **Testado**: 2026-11-24
 - **Assessment**: ./assessment.md
 - **Fix**: ./fix.md
-- **Result**: partial
+- **Result**: verified
 
 ## Summary
 
@@ -35,3 +35,14 @@ Test Files  34 passed (34)
 ## Recommendation
 
 Fechar apos uma checagem manual com Mongo real (entrar, sair, reentrar com a mesma fatura deve dar 409; pagar de novo deve permitir). Sem regressao detectada.
+
+## Verificação E2E (2026-11-25)
+
+Executada com Playwright contra `next dev` local (porta 3000), sessão Google real
+(`admin`) e o banco de produção `usaComigo`, com autorização do usuário. Dados de
+teste com prefixo `E2E` (2 usuários, 4 grupos, recarga PIX simulada de R$ 50),
+removidos ao final; saldo da carteira conferido igual ao de antes.
+
+- Pagar, entrar, sair (`DELETE` 200) e chamar `join` com a mesma fatura → 409 `fatura_ja_utilizada` (`estornada: false`); nenhum membro criado.
+
+O sintoma original não reproduz mais no ambiente real; resultado elevado de `partial` para `verified`.

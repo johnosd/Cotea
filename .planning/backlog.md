@@ -277,23 +277,12 @@ notificações, conta e auditoria (V2-22 a V2-26).
 
 ### Bugs atuais separados das features v2
 
-Revalidados em 2026-11-20. B-01 a B-06 e B-09 passaram a ser rastreados em `sdd/bugs/` (ver `## Bugs`); restam aqui só os já resolvidos.
-
-- **[Bug] B-07 · P1 · Hooks React chamados condicionalmente nas telas de grupo
-  do admin** — `npx eslint .` acusa 21 erros em `pages/admin/grupos/[id].js`
-  (`useState`/`useMemo`/`useEffect` depois de retorno antecipado, além de prop
-  duplicada na linha 381) e 1 em `pages/admin/grupos/novo.js:80` (`useEffect`
-  condicional). Pode causar erro de render ao alternar estados de sessão.
-  Achado no `sdd-execute` da 001 (2026-11-20); tratar via `sdd-bugfix`.
-  **Resolvido em 2026-11-24** (desvio T034 da 001, aprovado pelo usuário):
-  retornos antecipados movidos para depois dos hooks em `[id].js` e `novo.js`,
-  `className` duplicada removida; regressão confirmada em navegador (antes:
-  "Rendered more hooks" nas duas telas; depois: sem erro).
-- **[Bug] B-08 · P2 · `npm run lint` não roda** — `next lint` (Next 14) não
-  reconhece o `eslint.config.mjs` em formato flat e abre um prompt interativo;
-  usar `npx eslint .` até migrar o script. Achado no `sdd-execute` da 001
-  (2026-11-20). **Resolvido em 2026-11-24** (T034): `lint` → `eslint .` e
-  `ignores` de `.next/` no `eslint.config.mjs`.
+Nenhum bug aberto. B-01 a B-06 e B-09 (mais dois derivados do checkout) são
+rastreados em `sdd/bugs/` (ver `## Bugs`), todos `verified` em 2026-11-25. B-07
+(hooks condicionais em `pages/admin/grupos/[id].js` e `novo.js`) e B-08
+(`npm run lint` não rodava) foram resolvidos no desvio T034 da
+`001-rotinas-agendadas` (2026-11-24) e reconferidos em 2026-11-25: `eslint` sem
+erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 
 ### Decisões a esclarecer em `sdd-specify`
 
@@ -378,12 +367,12 @@ Revalidados em 2026-11-20. B-01 a B-06 e B-09 passaram a ser rastreados em `sdd/
 | --- | --- | --- | --- | --- | --- |
 | get-grupo-expoe-dados-internos | GET /api/grupos/[id] expõe dados internos sem sessão | Test | verified | Concluído | 2026-11-24 |
 | admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | verified | Concluído | 2026-11-24 |
-| b01-entrada-sem-pagamento | Entrada em grupo sem pagamento via /participar | Test | verified | Concluído | 2026-11-24 |
-| b02-estorno-sem-cancelamento | Estorno sem cancelamento (B-02) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
-| b03-cpf-aberto-listagens | CPF aberto em listagens administrativas (B-03) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
-| b04-pagamento-grupo-indisponivel | Pagamento de grupo indisponivel sem compensacao no servidor (B-04) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
-| b05-bloqueado-cria-grupo | Usuario bloqueado consegue criar grupo (B-05) | Test | verified | Concluído | 2026-11-24 |
-| b-06-leitura-value-findoneandupdate-driver-6x | Leitura de `.value` em `findOneAndUpdate` com driver 6.x (B-06) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| b01-entrada-sem-pagamento | Entrada em grupo sem pagamento via /participar | Test | verified | Concluído | 2026-11-25 |
+| b02-estorno-sem-cancelamento | Estorno sem cancelamento (B-02) | Test | verified | Concluído | 2026-11-25 |
+| b03-cpf-aberto-listagens | CPF aberto em listagens administrativas (B-03) | Test | verified | Concluído | 2026-11-25 |
+| b04-pagamento-grupo-indisponivel | Pagamento de grupo indisponivel sem compensacao no servidor (B-04) | Test | verified | Concluído | 2026-11-25 |
+| b05-bloqueado-cria-grupo | Usuario bloqueado consegue criar grupo (B-05) | Test | verified | Concluído | 2026-11-25 |
+| b-06-leitura-value-findoneandupdate-driver-6x | Leitura de `.value` em `findOneAndUpdate` com driver 6.x (B-06) | Test | verified | Concluído | 2026-11-25 |
 | b09-setup-indexes-conflito | setup-indexes.js conflita com setupDatabase.js (IndexKeySpecsConflict) | Test | verified | Concluído | 2026-11-24 |
-| pay-aceita-fatura-estornada | `pay` aceita invoiceId de fatura estornada | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
-| join-reusa-fatura-vinculada | join reusa fatura paga ja vinculada | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| pay-aceita-fatura-estornada | `pay` aceita invoiceId de fatura estornada | Test | verified | Concluído | 2026-11-25 |
+| join-reusa-fatura-vinculada | join reusa fatura paga ja vinculada | Test | verified | Concluído | 2026-11-25 |

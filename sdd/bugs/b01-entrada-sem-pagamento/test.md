@@ -37,3 +37,12 @@ Tests  153 passed (153)
 ## Recommendation
 
 Fechar o B-01 (atualizar o painel/backlog pelo agente principal). A entrada definitiva com caução permanece para V2-06.
+
+## Verificação E2E (2026-11-25)
+
+Executada com Playwright contra `next dev` local (porta 3000), sessão Google real
+(`admin`) e o banco de produção `usaComigo`, com autorização do usuário. Dados de
+teste com prefixo `E2E` (2 usuários, 4 grupos, recarga PIX simulada de R$ 50),
+removidos ao final; saldo da carteira conferido igual ao de antes.
+
+- `POST /api/grupos/x/participar` → 410 `rota_desativada`.

@@ -4,7 +4,7 @@
 - **Testado**: 2026-11-24
 - **Assessment**: ./assessment.md
 - **Fix**: ./fix.md
-- **Result**: partial
+- **Result**: verified
 
 ## Summary
 
@@ -36,3 +36,16 @@ Tests  171 passed (171)
 ## Recommendation
 
 Fechar o bug no código (fix aplicado e travado por teste de regressão); validar manualmente o checkout com falha de join em ambiente com banco antes de liberar V2-12/V2-15 e tratar a corrida em B-04.
+
+## Verificação E2E (2026-11-25)
+
+Executada com Playwright contra `next dev` local (porta 3000), sessão Google real
+(`admin`) e o banco de produção `usaComigo`, com autorização do usuário. Dados de
+teste com prefixo `E2E` (2 usuários, 4 grupos, recarga PIX simulada de R$ 50),
+removidos ao final; saldo da carteira conferido igual ao de antes.
+
+- Pagar + entrar no grupo E2E e chamar `refund` como membro → 409 `estorno_indisponivel` (`membro_do_grupo`); saldo inalterado.
+- Sair do grupo e chamar `refund` → 409 (`fatura_vinculada_a_entrada`); saldo inalterado.
+- Fatura já estornada pelo servidor → `refund` 200 "Fatura ja estornada" sem segundo crédito (1 lançamento `estorno_assinatura` por fatura no ledger).
+
+O sintoma original não reproduz mais no ambiente real; resultado elevado de `partial` para `verified`.
