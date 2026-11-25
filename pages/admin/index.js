@@ -28,11 +28,13 @@ const TABS = [
   { id: 'rotinas', label: 'Rotinas', roles: PERMISSIONS.ROTINAS_TAB },
 ];
 
-function UsersTab({ allowed, canChangeRole, currentUserId }) {
+function UsersTab({ allowed, canChangeRole, canCorrectCpf, currentUserId }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState('');
+  // 004-cadastro-financeiro (US5): correção de CPF pelo admin, com motivo obrigatório.
+  const [correcao, setCorrecao] = useState(null); // { id, cpf, motivo, erro }
 
   const load = async () => {
     setLoading(true);
@@ -92,6 +94,27 @@ function UsersTab({ allowed, canChangeRole, currentUserId }) {
       setError(err.message || 'Erro ao alterar papel');
       // reverte o select visualmente recarregando os itens
       load();
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const corrigirCpf = async () => {
+    if (!correcao) return;
+    setActionLoading(`cpf-${correcao.id}`);
+    setCorrecao((c) => ({ ...c, erro: '' }));
+    try {
+      const res = await fetch(`/api/admin/users/${correcao.id}/cpf`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: correcao.cpf, motivo: correcao.motivo }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Erro ao corrigir CPF');
+      setItems((prev) => prev.map((u) => (u._id === correcao.id ? { ...u, cpf: data.cpfMascarado } : u)));
+      setCorrecao(null);
+    } catch (err) {
+      setCorrecao((c) => (c ? { ...c, erro: err.message || 'Erro ao corrigir CPF' } : c));
     } finally {
       setActionLoading('');
     }
@@ -177,6 +200,52 @@ function UsersTab({ allowed, canChangeRole, currentUserId }) {
                         ? 'Desbloquear'
                         : 'Bloquear'}
                     </button>
+                    {canCorrectCpf && !isOwnAccount && (
+                      <button
+                        type="button"
+                        onClick={() => setCorrecao({ id: u._id, cpf: '', motivo: '', erro: '' })}
+                        className="ml-2 px-3 py-1 rounded text-sm font-semibold border border-gray-300 hover:bg-gray-50"
+                      >
+                        Corrigir CPF
+                      </button>
+                    )}
+                    {correcao?.id === u._id && (
+                      <div className="mt-2 space-y-2 max-w-xs" aria-label="Corrigir CPF">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={14}
+                          placeholder="CPF correto"
+                          aria-label="CPF correto"
+                          value={correcao.cpf}
+                          onChange={(e) => setCorrecao((c) => ({ ...c, cpf: e.target.value }))}
+                          className="w-full border rounded px-2 py-1"
+                        />
+                        <input
+                          type="text"
+                          maxLength={500}
+                          placeholder="Motivo (obrigatorio)"
+                          aria-label="Motivo da correcao"
+                          value={correcao.motivo}
+                          onChange={(e) => setCorrecao((c) => ({ ...c, motivo: e.target.value }))}
+                          className="w-full border rounded px-2 py-1"
+                        />
+                        {correcao.erro && <p className="text-xs text-red-600">{correcao.erro}</p>}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={corrigirCpf}
+                            disabled={actionLoading === `cpf-${u._id}` || !correcao.motivo.trim()}
+                            className="px-3 py-1 rounded text-sm font-semibold bg-blue-600 text-white disabled:opacity-50"
+                          >
+                            {actionLoading === `cpf-${u._id}` ? 'Salvando...' : 'Salvar CPF'}
+                          </button>
+                          <button type="button" onClick={() => setCorrecao(null)} className="px-3 py-1 rounded text-sm border">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
@@ -310,6 +379,7 @@ export default function AdminPanel() {
           <UsersTab
             allowed={isAllowed(PERMISSIONS.USERS_TAB)}
             canChangeRole={isAllowed(PERMISSIONS.ROLE_CHANGE)}
+            canCorrectCpf={isAllowed(PERMISSIONS.CORRIGIR_CPF)}
             currentUserId={session?.user?.id}
           />
         );
