@@ -542,7 +542,7 @@ Excecoes:
 - Grupo completo e sem saida agendada (sem vaga futura): bloquear entrada antes de pagamento.
 - Fatura paga mas entrada falhou: estorno automatico.
 - Usuario ja membro: nao duplicar membro nem cobrar novamente.
-- Usuario bloqueado: negar.
+- Usuario bloqueado: pode pagar e entrar como membro (ver estado "Bloqueado" do usuario); so nao cria grupos.
 - Conta nao validada: redirecionar para verificacao.
 
 Gap de implementacao:

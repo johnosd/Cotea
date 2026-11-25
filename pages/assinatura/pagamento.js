@@ -169,6 +169,20 @@ export default function Pagamento() {
   const cpfValido = metodo === 'pix' ? (cpfPix.length === 11 && validarCpf(cpfPix)) : true;
   const podeFinalizar = precoGrupo.valido && (metodo === 'saldo' || cpfValido);
 
+  // Erro de API preservando `codigo`/`estornada` para o tratamento abaixo.
+  const erroDaApi = (data, padrao) => {
+    const erro = new Error(data?.error || padrao);
+    erro.codigo = data?.codigo;
+    erro.estornada = data?.estornada === true;
+    return erro;
+  };
+
+  // Codigos em que a fatura guardada nao serve mais: o proximo clique deve gerar outra.
+  const MENSAGENS_FATURA_INUTILIZAVEL = {
+    fatura_estornada: 'Este pagamento ja foi estornado para o seu saldo. Clique em "Finalizar pagamento" para gerar uma nova cobranca.',
+    fatura_ja_utilizada: 'Este pagamento ja foi usado em uma entrada anterior. Clique em "Finalizar pagamento" para fazer um novo pagamento.',
+  };
+
   const pagarFaturaAssinatura = async (invoiceIdAtual) => {
     const payload = {
       grupoId,
@@ -181,7 +195,7 @@ export default function Pagamento() {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data?.error || 'Erro ao processar pagamento');
+      throw erroDaApi(data, 'Erro ao processar pagamento');
     }
     if (data?.invoiceId) setInvoiceId(data.invoiceId);
     return data;
@@ -217,7 +231,7 @@ export default function Pagamento() {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data?.error || 'Erro ao registrar sua entrada no grupo');
+      throw erroDaApi(data, 'Erro ao registrar sua entrada no grupo');
     }
     return data;
   };
@@ -277,6 +291,19 @@ export default function Pagamento() {
 
       router.push(`/assinatura/sucesso${query.toString() ? `?${query.toString()}` : ''}`);
     } catch (error) {
+      // Fatura estornada ou ja usada: descarta para o retry gerar uma nova.
+      const mensagemInutilizavel = MENSAGENS_FATURA_INUTILIZAVEL[error?.codigo];
+      if (mensagemInutilizavel) {
+        setInvoiceId('');
+        setErroPagamento(mensagemInutilizavel);
+        return;
+      }
+      // O join ja estornou no servidor (grupo indisponivel/cheio): nada a estornar aqui.
+      if (error?.estornada) {
+        setInvoiceId('');
+        setErroPagamento(`${error.message}. O pagamento foi estornado para o seu saldo.`);
+        return;
+      }
       // Se pagamento concluiu mas join falhou, tenta estornar
       if (pagamento?.status === 'paga' && pagamento?.invoiceId) {
         try {
@@ -289,6 +316,7 @@ export default function Pagamento() {
             const data = await refundRes.json();
             throw new Error(data?.error || 'Erro ao estornar pagamento');
           }
+          setInvoiceId('');
           setErroPagamento('Pagamento estornado porque nao foi possivel registrar sua entrada. Nenhum valor foi cobrado.');
         } catch (refundErr) {
           setErroPagamento(refundErr?.message || 'Pagamento feito, mas nao foi possivel registrar entrada ou estornar automaticamente. Abra um chamado.');

@@ -34,7 +34,8 @@ export default async function handler(req, res) {
       .collection('users')
       .findOneAndUpdate({ _id: new ObjectId(id) }, { $set: { isBlocked } }, { returnDocument: 'after' });
 
-    if (!updated.value) {
+    // Driver 6: findOneAndUpdate devolve o documento direto (ou null), sem `.value`.
+    if (!updated) {
       return res.status(404).json({ error: 'Usuario nao encontrado' });
     }
 
@@ -44,11 +45,11 @@ export default async function handler(req, res) {
       actorEmail: session.user.email,
       targetId: id,
       targetCollection: 'users',
-      details: { targetEmail: updated.value.email },
+      details: { targetEmail: updated.email },
       ip: getClientIp(req),
     });
 
-    return res.status(200).json({ isBlocked: updated.value.isBlocked === true });
+    return res.status(200).json({ isBlocked: updated.isBlocked === true });
   } catch (error) {
     console.error('Erro ao bloquear/desbloquear usuario:', error);
     return res.status(500).json({ error: 'Erro interno do servidor' });

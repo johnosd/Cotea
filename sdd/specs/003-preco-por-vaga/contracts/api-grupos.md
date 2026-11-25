@@ -63,6 +63,11 @@ Projeção passa a incluir os campos de preço; se `precoDoGrupo(grupo).valido
 === false` → 409 `{ error: 'Preco indisponivel para este grupo', codigo:
 'preco_indisponivel' }`.
 
+> **Superado em 2026-11-24** pelo bug `sdd/bugs/b01-entrada-sem-pagamento/`: a
+> rota foi desativada e responde 410 `{ codigo: 'rota_desativada' }` a qualquer
+> chamada, sem consultar sessão, banco ou preço. Toda entrada passa por `pay` +
+> `join`. O registro acima fica como histórico da 003.
+
 ## POST `/api/grupos/[id]/join` — sem recusa por preço
 
 A fatura já está paga quando o join roda; recusar aqui prenderia o dinheiro

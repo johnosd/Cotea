@@ -76,6 +76,13 @@ async function handleCreate(req, res, db) {
   const adminUser = await db.collection('users').findOne({ _id: adminId });
   if (!adminUser) return res.status(403).json({ error: 'Administrador nao encontrado' });
 
+  // B-05: usuario bloqueado nao cria grupos (regras-negocio-v2, Bloqueado / Fluxo 18).
+  // O banco e a fonte de verdade: o isBlocked do JWT so e ressincronizado a cada updateAge.
+  // Apenas a criacao e barrada; pagamento, participacao e saque seguem permitidos.
+  if (adminUser.isBlocked === true || session.user.isBlocked === true) {
+    return res.status(403).json({ error: 'Conta bloqueada. Voce nao pode criar grupos. Procure o suporte.' });
+  }
+
   const preco = calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal });
 
   if (!nome) return res.status(400).json({ error: 'Nome e obrigatorio' });

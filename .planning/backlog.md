@@ -277,47 +277,7 @@ notificações, conta e auditoria (V2-22 a V2-26).
 
 ### Bugs atuais separados das features v2
 
-Revalidados em 2026-11-20 contra o código atual. Tratar via `sdd-bugfix`; os
-P0 devem ser corrigidos antes de depender do checkout v2.
-
-- **[Bug] B-01 · P0 · Entrada sem pagamento** — `POST /api/grupos/[id]/participar`
-  insere membro sem fatura paga para qualquer usuário validado
-  (`pages/api/grupos/[id]/participar.js:11-82`), contrariando o fluxo 7
-  (RN:485-545). Remover ou restringir a rota; a correção definitiva vem em V2-06.
-- **[Bug] B-02 · P0 · Estorno sem cancelamento** — o usuário pode chamar
-  `POST /api/assinaturas/refund` para qualquer fatura própria paga e receber o
-  crédito sem sair do grupo nem passar por cancelamento/disputa
-  (`pages/api/assinaturas/refund.js:21-105`). Corrigir antes de liberar V2-12 e
-  V2-15.
-- **[Bug] B-03 · P1 · CPF aberto em listagens internas** — a API de usuários
-  permite `support` e devolve o CPF descriptografado integral
-  (`lib/authz.js:12`, `pages/api/admin/users/index.js:24,35`), exibido em
-  `pages/admin/index.js:134`; a listagem de saques devolve o documento cru,
-  inclusive a `support` (`pages/api/withdraw/list.js:22-34`). Regra: CPF sempre
-  mascarado; completo só para o financeiro na aprovação de saque (RN:1006).
-- **[Bug] B-04 · P0 · Pagamento de grupo indisponível sem compensação no servidor**
-  — `pay` consulta só nome e preço, sem status/capacidade
-  (`pages/api/assinaturas/pay.js:46-62`); `join` só bloqueia grupo cheio depois
-  da fatura paga (`pages/api/grupos/[id]/join.js:124-158`) e não verifica status;
-  o estorno da falha depende da UI. Preservar a reconciliação de pagamentos já
-  feitos.
-- **[Bug] B-05 · P1 · Usuário bloqueado consegue criar grupo** — a criação checa
-  só `contaValidada` (`pages/api/grupos/index.js:66-68`), mas a regra proíbe
-  criação de grupos por usuário com `isBlocked` (RN:242, 1005). Cuidar para não
-  bloquear pagamento, participação e saque, que continuam permitidos.
-
-- **[Bug] B-06 · P1 · Suspeita: leitura de `.value` em `findOneAndUpdate` com
-  driver 6.16** — no `mongodb` v6, `findOneAndUpdate` retorna o documento
-  direto (sem `{ value }`), mas `pages/api/admin/users/[id]/block.js:37-51`,
-  `pages/api/withdraw/approve.js:58,82`, `pages/api/withdraw/reject.js:55,79` e
-  `lib/invoices.js:60,77,95` leem `.value`. Efeito provável: bloqueio responde
-  404 após gravar e aprovar/rejeitar saque responde 400 após confirmar o
-  lançamento. Não reproduzido — achado no `sdd-plan` da 001 (2026-11-20).
-  **Parcial (002-ledger-segmentado, 2026-11-24)**: resolvido em
-  `withdraw/approve.js` e `withdraw/reject.js` (agora via `liquidarReserva` em
-  `lib/ledger/saque.js`, sem `.value`). Restam `pages/api/admin/users/[id]/block.js`
-  e `lib/invoices.js` (`markInvoicePaid`/`AwaitingTopUp`/`Refunded`; as rotas
-  caem no fallback `invoice._id`/status fixo na resposta).
+Revalidados em 2026-11-20. B-01 a B-06 e B-09 passaram a ser rastreados em `sdd/bugs/` (ver `## Bugs`); restam aqui só os já resolvidos.
 
 - **[Bug] B-07 · P1 · Hooks React chamados condicionalmente nas telas de grupo
   do admin** — `npx eslint .` acusa 21 erros em `pages/admin/grupos/[id].js`
@@ -334,12 +294,6 @@ P0 devem ser corrigidos antes de depender do checkout v2.
   usar `npx eslint .` até migrar o script. Achado no `sdd-execute` da 001
   (2026-11-20). **Resolvido em 2026-11-24** (T034): `lint` → `eslint .` e
   `ignores` de `.next/` no `eslint.config.mjs`.
-
-- **[Bug] B-09 · P3 · `database/setup-indexes.js` conflita com `setupDatabase.js`**
-  — cria `walletTransactions { referenceId, type, source }` sem `unique`/parcial,
-  mas `setupDatabase.js` já cria o mesmo índice como único parcial; o script
-  aborta com `IndexKeySpecsConflict` (code 86) e não cria os índices seguintes.
-  Achado no `sdd-execute` da 001 (2026-11-20).
 
 ### Decisões a esclarecer em `sdd-specify`
 
@@ -360,6 +314,13 @@ P0 devem ser corrigidos antes de depender do checkout v2.
   (`pages/api/grupos/[id]/join.js:56`).
 - Grupo "pré-aprovado" (RN:443-445) e gateway PIX real com webhook (RN:817-819)
   são possibilidades futuras, não features v2 confirmadas.
+- Índice único `walletTransactions { referenceId, type, source }` (parcial, em
+  `database/setupDatabase.js`): pode colidir com a primeira operação multi-perna
+  do ledger (ex.: crédito ao dono + `receita_taxa` no repasse, V2-11), já que
+  todas as pernas compartilham `source`/`referenceId`. A idempotência já é
+  garantida por `operacaoId` único. Avaliar torná-lo não único no `sdd-plan` da
+  feature que introduzir a operação multi-perna. Achado no bug
+  `b09-setup-indexes-conflito` (2026-11-24).
 
 ### Ajustes pequenos candidatos a `sdd-adhoc`
 
@@ -409,6 +370,7 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | --- | --- | --- |
 | 2026-11-20 | Auth/login | `/admin` não abria logado em produção: middleware passa `secureCookie` pelo protocolo (cookie `__Secure-` em HTTPS) e `/auth/signin` respeita `callbackUrl` só com caminhos internos (`lib/redirecionamento.js`, teste em `tests/redirecionamento.test.js`) |
 | 2026-11-24 | Auth/login | Logout não permitia trocar de usuário (Google reaproveitava a conta logada): `GoogleProvider` com `authorization.params.prompt = "select_account"` em `pages/api/auth/[...nextauth].js`; sem teste automatizado (fluxo OAuth), validar manualmente |
+| 2026-11-24 | Checkout | Retry do pagamento após estorno dava 409 até recarregar: `pages/assinatura/pagamento.js` agora preserva `codigo`/`estornada` dos erros de `pay`/`join`, descarta o `invoiceId` em `fatura_estornada`/`fatura_ja_utilizada` (com mensagem orientando novo pagamento), não chama o `refund` quando o `join` já estornou no servidor (`estornada: true`) e limpa o `invoiceId` após estorno pelo cliente. Considerado e descartado: emitir fatura nova automaticamente no `pay` (cobraria sem intenção explícita). Validado com `eslint` (limpo), `npx vitest run` (34 arquivos/226 testes) e `npm run build` (ok); sem teste no navegador (o fluxo de erro exige pagamento real no banco de produção) |
 
 ## Bugs
 
@@ -416,3 +378,12 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | --- | --- | --- | --- | --- | --- |
 | get-grupo-expoe-dados-internos | GET /api/grupos/[id] expõe dados internos sem sessão | Test | verified | Concluído | 2026-11-24 |
 | admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | verified | Concluído | 2026-11-24 |
+| b01-entrada-sem-pagamento | Entrada em grupo sem pagamento via /participar | Test | verified | Concluído | 2026-11-24 |
+| b02-estorno-sem-cancelamento | Estorno sem cancelamento (B-02) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| b03-cpf-aberto-listagens | CPF aberto em listagens administrativas (B-03) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| b04-pagamento-grupo-indisponivel | Pagamento de grupo indisponivel sem compensacao no servidor (B-04) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| b05-bloqueado-cria-grupo | Usuario bloqueado consegue criar grupo (B-05) | Test | verified | Concluído | 2026-11-24 |
+| b-06-leitura-value-findoneandupdate-driver-6x | Leitura de `.value` em `findOneAndUpdate` com driver 6.x (B-06) | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| b09-setup-indexes-conflito | setup-indexes.js conflita com setupDatabase.js (IndexKeySpecsConflict) | Test | verified | Concluído | 2026-11-24 |
+| pay-aceita-fatura-estornada | `pay` aceita invoiceId de fatura estornada | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| join-reusa-fatura-vinculada | join reusa fatura paga ja vinculada | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |

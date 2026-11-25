@@ -5,6 +5,9 @@ import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } fr
 import { obterLedger } from '../../../lib/ledger/servidor';
 import { CATEGORIAS } from '../../../lib/ledger/categorias';
 import { logAudit } from '../../../lib/audit';
+import { ObjectId } from 'mongodb';
+import { getDb } from '../../../lib/mongodb';
+import { avaliarEstorno, MENSAGEM_ESTORNO_NEGADO } from '../../../lib/estorno';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -35,6 +38,26 @@ export default async function handler(req, res) {
 
     if (invoice.status !== INVOICE_STATUS.PAGA) {
       return res.status(400).json({ error: 'Apenas faturas pagas podem ser estornadas' });
+    }
+
+    // B-02: estorno é só compensação de falha de entrada. Quem já é (ou foi)
+    // membro, ou cuja fatura já foi vinculada a uma entrada, não estorna aqui.
+    const db = await getDb();
+    const idsGrupo = [String(invoice.grupoId)];
+    const idsUsuario = [String(userId)];
+    if (ObjectId.isValid(String(invoice.grupoId))) idsGrupo.push(new ObjectId(String(invoice.grupoId)));
+    if (ObjectId.isValid(String(userId))) idsUsuario.push(new ObjectId(String(userId)));
+    const membro = await db.collection('membrosGrupo').findOne({
+      grupoId: { $in: idsGrupo },
+      userId: { $in: idsUsuario },
+    });
+    const avaliacao = avaliarEstorno({ invoice, membro });
+    if (!avaliacao.permitido) {
+      return res.status(409).json({
+        error: MENSAGEM_ESTORNO_NEGADO,
+        codigo: 'estorno_indisponivel',
+        motivo: avaliacao.motivo,
+      });
     }
 
     const valor = normalizeAmount(invoice.amount);

@@ -9,8 +9,12 @@ import { CATEGORIAS } from '../../../lib/ledger/categorias';
 import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
 import { precoDoGrupo } from '../../../lib/preco';
+import { avaliarEntradaNoGrupo } from '../../../lib/grupo-entrada';
 
-const parseObjectId = (valor) => {
+// Unicos status de fatura existente que o pay pode cobrar (ou reabrir para recarga).
+const STATUS_FATURA_COBRAVEL = [INVOICE_STATUS.AGUARDANDO_PAGAMENTO, INVOICE_STATUS.AGUARDANDO_RECARGA];
+
+const parseObjectId =(valor) => {
   if (valor instanceof ObjectId) return valor;
   if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
   return null;
@@ -42,7 +46,7 @@ export default async function handler(req, res) {
     const db = await getDb();
     const grupo = await db.collection('grupos').findOne(
       { _id: grupoIdObj },
-      { projection: { nome: 1, valorPorVaga: 1, repassePorVaga: 1, taxaPorVaga: 1, precoValido: 1 } }
+      { projection: { nome: 1, valorPorVaga: 1, repassePorVaga: 1, taxaPorVaga: 1, precoValido: 1, status: 1, capacidadeTotal: 1, adminId: 1 } }
     );
     if (!grupo) {
       return res.status(404).json({ error: 'Grupo nao encontrado' });
@@ -59,6 +63,20 @@ export default async function handler(req, res) {
       if (!invoice || invoice.userId !== String(userId) || invoice.grupoId !== String(grupoIdRaw)) {
         return res.status(404).json({ error: 'Fatura nao encontrada para este usuario/grupo' });
       }
+      // Fatura existente so segue se estiver paga (reconciliacao) ou aberta. Estornada
+      // exige fatura nova; status desconhecido nunca e cobrado nem reaberto.
+      if (invoice.status === INVOICE_STATUS.ESTORNADA) {
+        return res.status(409).json({
+          error: 'Esta fatura foi estornada. Inicie um novo pagamento.',
+          codigo: 'fatura_estornada',
+        });
+      }
+      if (!STATUS_FATURA_COBRAVEL.includes(invoice.status) && invoice.status !== INVOICE_STATUS.PAGA) {
+        return res.status(409).json({
+          error: 'Fatura indisponivel para pagamento. Inicie um novo pagamento.',
+          codigo: 'fatura_indisponivel',
+        });
+      }
       amount = normalizeAmount(invoice.amount);
     } else {
       preco = precoDoGrupo(grupo);
@@ -69,6 +87,17 @@ export default async function handler(req, res) {
     }
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: 'Valor da fatura invalido' });
+    }
+
+    // B-04: nada e cobrado se a entrada e impossivel (grupo indisponivel/cheio,
+    // usuario ja membro/dono/banido). Fatura ja paga nao e reavaliada: segue
+    // devolvendo 200 para a reconciliacao de pagamentos ja feitos.
+    if (!invoice || invoice.status !== INVOICE_STATUS.PAGA) {
+      const membros = await db.collection('membrosGrupo').find({ grupoId: grupoIdObj }).toArray();
+      const impedimento = avaliarEntradaNoGrupo({ grupo, userId, membros });
+      if (impedimento) {
+        return res.status(impedimento.http).json({ error: impedimento.error, codigo: impedimento.codigo });
+      }
     }
 
     const wallet = await ensureWallet(userId);
@@ -124,6 +153,25 @@ export default async function handler(req, res) {
     } catch (err) {
       if (!(err instanceof SaldoInsuficienteError)) throw err;
       saldoInsuficiente = err;
+    }
+
+    // Debito ja existia (repeticao do mesmo operacaoId): nada foi cobrado agora e o
+    // `extra` nao rodou. So responde "paga" se a fatura realmente esta paga.
+    if (operacao && !operacao.criada) {
+      const atual = await getInvoiceById(invoice._id);
+      if (atual?.status !== INVOICE_STATUS.PAGA) {
+        return res.status(409).json({
+          error: 'Fatura em estado inconsistente. Inicie um novo pagamento.',
+          codigo: 'fatura_inconsistente',
+        });
+      }
+      return res.status(200).json({
+        invoiceId: atual._id,
+        status: atual.status,
+        amount: atual.amount,
+        walletId: atual.walletId || wallet._id,
+        message: 'Fatura ja esta paga',
+      });
     }
 
     if (operacao) {
