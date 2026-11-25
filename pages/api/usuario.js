@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "./auth/[...nextauth]";
 import { getDb } from "../../lib/mongodb";
-import { decryptCPF } from "../../lib/encryption";
+import { resumoCadastroFinanceiro } from "../../lib/cadastro-financeiro-perfil";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
@@ -36,8 +36,10 @@ export default async function handler(req, res) {
       return res.status(404).json({ message: "Usuario nao encontrado" });
     }
 
-    if (usuario.cpf) usuario.cpf = decryptCPF(usuario.cpf);
-    return res.status(200).json(usuario);
+    // 004-cadastro-financeiro (FR-010, SC-005): o CPF nunca sai completo; só mascarado.
+    const { cpf, ...dados } = usuario;
+    const { cpfMascarado, cpfTravado } = resumoCadastroFinanceiro({ cpf, endereco: usuario.endereco });
+    return res.status(200).json({ ...dados, cpfMascarado, cpfTravado });
   } catch (error) {
     console.error("Erro ao buscar dados do usuario:", error);
     return res.status(500).json({ message: "Erro interno do servidor" });
