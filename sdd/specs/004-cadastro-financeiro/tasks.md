@@ -225,23 +225,23 @@ description: "Lista de tasks da feature 004-cadastro-financeiro"
 
 ### Implementation
 
-- [ ] T033 [P] [US5] `lib/authz.js`: `PERMISSIONS.CORRIGIR_CPF = ['admin']` (D-09)
-- [ ] T034 [US5] Criar `pages/api/admin/users/[id]/cpf.js` (PUT) conforme `contracts/api-cadastro-financeiro.md`, reusando `validarCpf`, `hashCPF`, `encryptCPF` e a mesma checagem de duplicidade de `salvarCadastroFinanceiro`; `logAudit` após gravar
-- [ ] T035 [US5] `pages/admin/index.js`: ação "Corrigir CPF" na lista de usuários (só para quem tem `CORRIGIR_CPF`), com campos CPF e motivo e exibição do resultado mascarado
+- [X] T033 [P] [US5] `lib/authz.js`: `PERMISSIONS.CORRIGIR_CPF = ['admin']` (D-09)
+- [X] T034 [US5] Criar `pages/api/admin/users/[id]/cpf.js` (PUT) conforme `contracts/api-cadastro-financeiro.md`, reusando `validarCpf`, `hashCPF`, `encryptCPF` e a mesma checagem de duplicidade de `salvarCadastroFinanceiro`; `logAudit` após gravar
+- [X] T035 [US5] `pages/admin/index.js`: ação "Corrigir CPF" na lista de usuários (só para quem tem `CORRIGIR_CPF`), com campos CPF e motivo e exibição do resultado mascarado
 
 ### Testes da Fase
 
-- [ ] T036 [US5] `tests/cadastro/admin-corrigir-cpf.test.js`: sucesso com auditoria `user.cpf_corrected` cujo `details` não contém o CPF (nem mascarado); motivo vazio → 400; CPF inválido → 400; duplicado → 409; próprio id → 403; `support`/`finance` → 403
+- [X] T036 [US5] `tests/cadastro/admin-corrigir-cpf.test.js`: sucesso com auditoria `user.cpf_corrected` cujo `details` não contém o CPF (nem mascarado); motivo vazio → 400; CPF inválido → 400; duplicado → 409; próprio id → 403; `support`/`finance` → 403
 
 **Critério de Conclusão**: `npx vitest run tests/cadastro/admin-corrigir-cpf.test.js` verde; passo 5 do `quickstart.md` validado.
 
 **Registro da Fase**:
 
-- Status:
-- Feito:
-- Contrato:
-- Testes executados:
-- Pendências:
+- Status: concluída (2026-11-25)
+- Feito: `PERMISSIONS.CORRIGIR_CPF = ['admin']` em `lib/authz.js`; `PUT /api/admin/users/[id]/cpf` (motivo obrigatório até 500 caracteres, `validarCpf`, duplicidade por `cpfEmUsoPorOutraConta` + captura de E11000, `encryptCPF` + `hashCPF`, recusa o próprio id, `logAudit('user.cpf_corrected', { motivo })` sem CPF); ação "Corrigir CPF" na aba Usuarios de `pages/admin/index.js` (só com a permissão e nunca na própria linha; "Salvar CPF" desabilitado sem motivo; lista atualiza com o CPF mascarado).
+- Contrato: sem contrato nesta fase; trava 004 íntegra.
+- Testes executados: `npx vitest run tests/cadastro/admin-corrigir-cpf.test.js` → 5/5; `npx vitest run` → 41 arquivos, 274/274; `npx eslint` nos arquivos da fase → sem erros (1 aviso pré-existente de `useMemo` em `admin/index.js`). Navegador (sessão admin, sem gravar): 4 usuários, 3 botões "Corrigir CPF" e nenhum na própria linha; formulário abre, "Salvar CPF" desabilitado sem motivo, cancelar fecha; CPFs da lista mascarados. 1 iteração (a sessão do navegador expirou no meio e o usuário fez login de novo).
+- Pendências: nenhuma.
 
 ---
 
@@ -253,22 +253,22 @@ description: "Lista de tasks da feature 004-cadastro-financeiro"
 
 ### Implementation
 
-- [ ] T037 [US6] Implementar `planejarMigracaoCpf` em `lib/cadastro-financeiro.js` conforme `logic/cadastro.md`
-- [ ] T038 [US6] Criar `scripts/migrar-cpf-usuarios.js` no padrão de `scripts/migrar-precos-grupos.js` (dry-run padrão, `--aplicar`, relatório sem CPF, `logAudit`/`auditLogs` `user.cpf_migrado` por usuário alterado, sai com código ≠ 0 se houver conflito; `marcar_invalido` move o valor cifrado para `cpfLegadoInvalido` e remove `cpf`/`cpfHash`)
+- [X] T037 [US6] Implementar `planejarMigracaoCpf` em `lib/cadastro-financeiro.js` conforme `logic/cadastro.md`
+- [X] T038 [US6] Criar `scripts/migrar-cpf-usuarios.js` no padrão de `scripts/migrar-precos-grupos.js` (dry-run padrão, `--aplicar`, relatório sem CPF, `logAudit`/`auditLogs` `user.cpf_migrado` por usuário alterado, sai com código ≠ 0 se houver conflito; `marcar_invalido` move o valor cifrado para `cpfLegadoInvalido` e remove `cpf`/`cpfHash`)
 
 ### Testes da Fase
 
-- [ ] T039 [US6] `tests/cadastro/migracao-cpf.test.js`: texto puro válido → `criptografar`; cifrado sem hash → `definir_hash`; inválido → `marcar_invalido`; duplicados → conflito sem ação para nenhum deles; segunda passada sobre o resultado → 0 ações
+- [X] T039 [US6] `tests/cadastro/migracao-cpf.test.js`: texto puro válido → `criptografar`; cifrado sem hash → `definir_hash`; inválido → `marcar_invalido`; duplicados → conflito sem ação para nenhum deles; segunda passada sobre o resultado → 0 ações
 
 **Critério de Conclusão**: `npx vitest run tests/cadastro/migracao-cpf.test.js` verde; dry-run do script roda sem gravar.
 
 **Registro da Fase**:
 
-- Status:
-- Feito:
-- Contrato:
-- Testes executados:
-- Pendências:
+- Status: concluída (2026-11-25)
+- Feito: `planejarMigracaoCpf` em `lib/cadastro-financeiro.js` (texto puro válido → `criptografar`; cifrado sem hash ou com hash divergente → `definir_hash`; inválido → `marcar_invalido`; CPF repetido → conflito sem ação para nenhuma das contas; resumo por tipo). `scripts/migrar-cpf-usuarios.js`: dry-run padrão, `--aplicar` grava; `marcar_invalido` move o valor (cifrado) para `cpfLegadoInvalido` e remove `cpf`/`cpfHash`; auditoria `user.cpf_migrado` com `{ tipo }`; com conflito sai com código 2 e não grava nada; não imprime CPF.
+- Contrato: sem contrato nesta fase; trava 004 íntegra.
+- Testes executados: `npx vitest run tests/cadastro/migracao-cpf.test.js` → 3/3 (classificação, conflito, idempotência); `npx eslint` → limpo; `node --check` do script → ok. Dry-run contra o banco (só leitura): `node --env-file=.env.local scripts/migrar-cpf-usuarios.js` → 4 usuários, 1 `marcar_invalido` (admin, CPF legado inválido — R-011), 3 sem CPF, 0 conflitos, exit 0.
+- Pendências: aplicar a migração e criar o índice é T042 (precisa de autorização do usuário — banco de produção).
 
 ---
 
@@ -276,11 +276,12 @@ description: "Lista de tasks da feature 004-cadastro-financeiro"
 
 **Purpose**: Documentação, migração real e validação final.
 
-- [ ] T040 Atualizar `.docs/regras-negocio-v2.md`: Fluxo 3 (CPF com dígito verificador, único, travado, mascarado; PIX e saque usam o CPF do perfil), "Usuário validado" (gap resolvido) e a inclusão do uso de saldo (`wallet/pay`) no cadastro exigido (D-11)
-- [ ] T041 [P] Atualizar `CLAUDE.md` (toda ação financeira nova chama `verificarCadastroFinanceiro`; CPF só via `encryptCPF` + `hashCPF`) e, em `.planning/backlog.md`, anotar na V2-17 que a chave = CPF do perfil já foi entregue pela 004
+- [X] T040 Atualizar `.docs/regras-negocio-v2.md`: Fluxo 3 (CPF com dígito verificador, único, travado, mascarado; PIX e saque usam o CPF do perfil), "Usuário validado" (gap resolvido) e a inclusão do uso de saldo (`wallet/pay`) no cadastro exigido (D-11)
+- [X] T041 [P] Atualizar `CLAUDE.md` (toda ação financeira nova chama `verificarCadastroFinanceiro`; CPF só via `encryptCPF` + `hashCPF`) e, em `.planning/backlog.md`, anotar na V2-17 que a chave = CPF do perfil já foi entregue pela 004
 - [ ] T042 **Com autorização do usuário** (banco de produção): rodar a migração conforme `quickstart.md` (dry-run → `--aplicar` → dry-run com 0 ações) e só então `node database/setupDatabase.js` para criar o índice; parar e reportar se houver conflito
 - [ ] T043 Executar o `quickstart.md` ponta a ponta (passos 1-6), com usuários de teste `@example.invalid` limpos ao final
-- [ ] T044 Gates: `npm test`, `npm run lint`, `npm run build` (com o `next dev` parado; depois apagar `.next` e subir o dev de novo)
+  - **Parcial (2026-11-25)**: executado no servidor real (sessão admin): CPF de outra conta → 409 `cpf_indisponivel` sem vazar id/e-mail; CPF com DV errado → 400; CEP inexistente → 400 "CEP nao encontrado" (consulta ViaCEP pelo servidor funcionando); correção pelo admin sem motivo → 400, do próprio CPF → 403, com motivo → 200 + `user.cpf_corrected` só com o motivo; gate barra o admin (CPF inválido) com 409 `pendencias: ['cpf']`; conta do admin intacta; usuário de teste e auditoria removidos. Telas validadas nas Fases 3, 5, 6 e 7. **Falta**: salvamento real pelo formulário e PIX/saque de ponta a ponta com uma conta de cadastro completo logada (só há login Google; a única conta acessível é a do admin, cujo CPF real o usuário precisa informar) — fazer após o deploy/T042.
+- [X] T044 Gates: `npm test`, `npm run lint`, `npm run build` (com o `next dev` parado; depois apagar `.next` e subir o dev de novo)
 
 ### Checklist de Release
 
@@ -289,14 +290,14 @@ description: "Lista de tasks da feature 004-cadastro-financeiro"
 - [X] Fase 4 (User Story 2) concluída
 - [X] Fase 5 (User Story 3) concluída
 - [X] Fase 6 (User Story 4) concluída
-- [ ] Fase 7 (User Story 5) concluída
-- [ ] Fase 8 (User Story 6) concluída
-- [ ] Testes de contrato 5/5 verdes na suíte completa e `check-contract-tests.ps1 -Slug 004-cadastro-financeiro` íntegro (e os locks 001-003 íntegros)
-- [ ] `npm test` e `npm run lint` passando
-- [ ] `npm run build` passando (dev server parado durante o build)
-- [ ] Schema `users.schema.json` e índice `cpfHash_unico` em `setupDatabase.js` e `setup-indexes.js`, com o teste do B-09 verde
+- [X] Fase 7 (User Story 5) concluída
+- [X] Fase 8 (User Story 6) concluída
+- [X] Testes de contrato 5/5 verdes na suíte completa e `check-contract-tests.ps1 -Slug 004-cadastro-financeiro` íntegro (e os locks 001-003 íntegros)
+- [X] `npm test` e `npm run lint` passando
+- [X] `npm run build` passando (dev server parado durante o build)
+- [X] Schema `users.schema.json` e índice `cpfHash_unico` em `setupDatabase.js` e `setup-indexes.js`, com o teste do B-09 verde
 - [ ] Migração aplicada e índice criado no banco (T042), com 0 conflitos
-- [ ] Consumidores das APIs alteradas atualizados (`contracts/api-cadastro-financeiro.md`)
+- [X] Consumidores das APIs alteradas atualizados (`contracts/api-cadastro-financeiro.md`)
 - [ ] `quickstart.md` executado com sucesso
 
 ---

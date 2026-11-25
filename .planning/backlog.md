@@ -186,6 +186,10 @@ notificações, conta e auditoria (V2-22 a V2-26).
   a listagem devolve o documento cru, inclusive para suporte
   (`pages/api/withdraw/list.js:22-34`), e a tela mostra `pixKeyCpf` cifrado
   (`pages/admin/withdrawals.js:104`). Depende de V2-02 e V2-04.
+  **Parcial (004-cadastro-financeiro, 2026-11-25)**: a chave PIX já é sempre o CPF
+  do perfil (o cliente não envia mais chave) e o saque exige cadastro financeiro
+  completo; o CPF da listagem já sai mascarado (B-03); a solicitação já é
+  auditada (`withdrawal.requested`, 002). Restam mínimo de R$ 5,00, taxa e prazo.
 
 - **V2-18 · P2 · Depósito PIX v2** — Mínimo R$ 5,00; taxa do provedor repassada
   e exibida antes de criar o pagamento; cadastro financeiro completo no 1º
@@ -344,7 +348,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
-| 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Em Execução | 39/60 tasks | 2026-11-25 |
+| 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Em Execução | 56/60 tasks | 2026-11-25 |
 
 ## Melhorias Ad-hoc
 

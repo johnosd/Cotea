@@ -231,14 +231,10 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | Área | Estado |
 | --- | --- |
-| Regras puras (`lib/cadastro-financeiro.js`) | Implementadas (exceto `planejarMigracaoCpf`, Fase 8); contratos 1-2 verdes |
-| Gate (`lib/cadastro-financeiro-servidor.js`) | Ligado aos cinco handlers (pay, pix, saque, wallet/pay, POST grupos); contrato 3 verde |
-| Leitura/gravação (`lib/cadastro-financeiro-perfil.js`), endpoint `/api/perfil/cadastro-financeiro`, `atualizarPerfil`, perfil | Implementados; contrato 4 verde; validados no navegador (sem gravar) |
-| Proxy `GET /api/cep/[cep]` e `components/EnderecoCampos.js` | Implementados (R-010) |
-| Schema e índice `cpfHash_unico` | No código; **não criado no banco** (só após a migração, T042) |
-| Formulário embutido (`components/CadastroFinanceiroForm.js`) nas cinco telas | Implementado; validado no navegador com `PUT` interceptado (sem gravar) |
-| PIX e saque com o CPF do perfil; telas sem campo de CPF/chave | Implementados; contrato 5 verde (20/20 contratos) |
-| Correção pelo admin, migração | Pendentes (Fases 7-8) |
+| Código das 6 histórias (regras, gate, perfil, formulário embutido, PIX/saque com CPF do perfil, correção pelo admin, migração) | Implementado; contratos 20/20 (001-004), `npm test` 277/277, `npm run lint` 0 erros, `npm run build` ok |
+| Documentação | `.docs/regras-negocio-v2.md` (Usuário validado, Fluxos 3, 15, 16, 18), `CLAUDE.md` e nota na V2-17 do backlog atualizados |
+| Banco de produção | **Migração não aplicada e índice `cpfHash_unico` não criado** (T042, decisão do usuário: junto do deploy). Dry-run: 1 `marcar_invalido` (admin), 0 conflitos |
+| Validação manual | Parcial (T043): falta salvamento real pelo formulário e PIX/saque de ponta a ponta com conta de cadastro completo |
 
 ## Riscos e Decisões
 
@@ -280,15 +276,20 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | 2026-11-25 | Fase 6 (US4) | PIX e saque usam o CPF do gate e ignoram o do corpo; telas sem campo de CPF/chave (saque mostra o CPF mascarado); suíte 269/269, contratos 20/20 | — |
 
-**PRÓXIMO**: Fase 7 (US5) — T033 `PERMISSIONS.CORRIGIR_CPF`, T034 `PUT /api/admin/users/[id]/cpf`, T035 ação no painel, T036 testes
+| 2026-11-25 | Fase 7 (US5) | Permissão `CORRIGIR_CPF`, rota de correção com motivo e auditoria sem CPF, ação no painel; 5 testes; suíte 274/274 | — |
+
+| 2026-11-25 | Fase 8 (US6) | `planejarMigracaoCpf` + script de migração (dry-run/`--aplicar`, conflito aborta); 3 testes; dry-run no banco: 1 inválido, 0 conflitos | Aplicar + índice (T042) com autorização |
+
+| 2026-11-25 | Fase 9 (Polish) | RN, CLAUDE.md e V2-17 atualizados; quickstart parcial no servidor real (duplicidade, DV, CEP, correção pelo admin, gate) com limpeza; gates: test 277/277, lint 0 erros, build ok | T042 no deploy; T043 restante com conta de cadastro completo |
+
+**PRÓXIMO**: no deploy — `scripts/migrar-cpf-usuarios.js` (dry-run → `--aplicar` → dry-run 0) → `node database/setupDatabase.js` → deploy; depois concluir T043 (o admin informa o CPF real no perfil e testa PIX/saque) e rodar `sdd-converge`
 
 ## Arquivos Principais
 
 <!-- Sobrescrita a cada checkpoint — foco da etapa atual, não a árvore inteira. -->
 
-- `pages/api/pix/simulated/create.js`, `pages/api/withdraw/create.js` — CPF do perfil
-- `pages/assinatura/pagamento.js`, `pages/wallet/add.js`, `pages/wallet/withdraw.js` — sem campo de CPF/chave
-- Próximo foco: `lib/authz.js`, `pages/api/admin/users/[id]/cpf.js`, `pages/admin/index.js`
+- `scripts/migrar-cpf-usuarios.js` e `database/setupDatabase.js` — passos do deploy (T042)
+- `sdd/specs/004-cadastro-financeiro/quickstart.md` — passos 2 e 4 restantes (T043)
 
 ## Cuidados para Retomada
 
@@ -300,3 +301,4 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 - Logo após editar uma página, o `next dev` pode servir a tela presa em "Carregando..." durante o Fast Refresh; recarregar depois da recompilação antes de concluir que quebrou.
 - Teste novo que chame `pay`, `pix/simulated/create`, `withdraw/create`, `wallet/pay` ou `POST /api/grupos` precisa simular `lib/cadastro-financeiro-servidor` (ou semear usuário com CPF cifrado válido + endereço válido), senão recebe 409 do gate.
 - Para validar telas sem gravar no banco de produção: interceptar `PUT /api/perfil/cadastro-financeiro` com `page.route` e conferir que a ação é reenviada com o mesmo corpo; as recusas 409 do gate não têm efeito.
+- A sessão do navegador do Playwright expira (login Google): se `/api/auth/session` vier vazio, abrir `/auth/signin` e pedir ao usuário para entrar de novo; páginas de admin carregam a lista depois do título — esperar o conteúdo antes de contar linhas.

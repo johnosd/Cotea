@@ -170,10 +170,11 @@ Alvo v2:
 - Pode listar, ver detalhes e iniciar fluxos sensiveis.
 - O cadastro financeiro completo (CPF e dados de pagamento) e exigido **no momento do primeiro pagamento, saque ou criacao de grupo**, e nao antes. O usuario pode navegar e preencher formularios, mas a acao so conclui com o cadastro completo.
 
-Gap de implementacao:
+Implementado (004-cadastro-financeiro):
 
-- Hoje o sistema nao diferencia claramente "conta validada" de "cadastro completo".
-- CPF/endereco existem no perfil, mas nem todos os fluxos exigem completude antes da acao.
+- "Cadastro financeiro completo" e um estado derivado, separado de `contaValidada`: CPF valido (digito verificador) e unico entre contas + endereco valido (CEP com 8 digitos e consultado, UF, cidade, bairro, rua e numero — aceita "S/N").
+- O servidor exige o cadastro completo para **concluir** pagamento de assinatura (por qualquer meio, inclusive saldo), uso de saldo da carteira (Fluxo 16), deposito PIX, saque e criacao de grupo. Navegar e preencher formularios nao exige.
+- Quando falta algo, a propria tela abre um formulario so com os campos pendentes e repete a acao depois de salvar, sem perder o que foi preenchido.
 
 ### Membro
 
@@ -353,19 +354,20 @@ Fluxo:
 1. Usuario acessa perfil.
 2. Sistema carrega dados do usuario.
 3. Usuario edita dados pessoais.
-4. Usuario informa CPF e endereco quando necessario.
-5. Sistema valida campos obrigatorios, formato de username, CPF com 11 digitos e endereco.
-6. Sistema salva dados e criptografa CPF.
+4. Usuario informa CPF e endereco quando necessario (no perfil ou no formulario que aparece dentro do checkout, recarga, saque, uso de saldo ou criacao de grupo).
+5. Sistema valida campos obrigatorios, formato de username, CPF pelo digito verificador, CPF unico entre contas e endereco (CEP consultado; com CEP encontrado, cidade e UF sao as do CEP; CEP geral exige rua e bairro digitados; com a consulta indisponivel, aceita o formato valido e marca "CEP nao confirmado").
+6. Sistema salva o CPF sempre criptografado (com impressao digital para unicidade) e o endereco.
+7. Depois de salvo, o CPF fica **travado**: o usuario o ve mascarado (`***.123.456-**`) e nao pode altera-lo nem apaga-lo; a correcao e feita so pelo admin do sistema, com motivo registrado na auditoria (sem o CPF). O endereco pode ser trocado, mas nao pode voltar a ficar incompleto.
 
 Alvo v2:
 
 - Para pagar via PIX, sacar, receber repasse ou criar grupo (publico ou de organizacao), o CPF deve estar presente e valido.
 - Para saque, a chave PIX deve ser sempre o CPF do proprio usuario, sem excecao (Fluxo 18).
 
-Gap de implementacao:
+Implementado (004-cadastro-financeiro):
 
-- O checkout de assinatura pede CPF para PIX, mas nao necessariamente salva esse CPF no perfil.
-- O sistema atual valida tamanho do CPF no perfil, mas nao aplica algoritmo de CPF nesse endpoint.
+- O PIX (checkout e recarga) e o saque nao pedem CPF: usam sempre o CPF do perfil; um CPF enviado pela tela e ignorado.
+- O perfil aplica o digito verificador e a unicidade do CPF. CPFs antigos sao migrados: texto puro vira criptografado; CPF que nao passa no digito verificador conta como ausente e o usuario informa um valido.
 
 ## Fluxo 4: criacao de grupo pelo dono
 
@@ -805,7 +807,7 @@ Fluxo atual:
 
 1. Usuario acessa carteira.
 2. Clica em adicionar saldo.
-3. Informa valor e CPF.
+3. Informa o valor (o CPF do PIX vem do cadastro financeiro; se faltar, a tela pede o cadastro antes).
 4. Sistema cria pagamento PIX simulado em `payments` com status `pending`.
 5. Usuario confirma pagamento simulado.
 6. Sistema marca pagamento como confirmado.
@@ -831,6 +833,7 @@ Pre-condicoes:
 
 - Usuario autenticado.
 - Saldo disponivel suficiente.
+- Usuario tem cadastro financeiro completo (004-cadastro-financeiro: uso de saldo e um pagamento).
 
 Fluxo:
 
@@ -876,13 +879,13 @@ Pre-condicoes:
 
 - Usuario autenticado e validado.
 - Usuario possui saldo disponivel.
-- Usuario informa chave PIX do tipo CPF, que deve ser o CPF do proprio usuario.
+- A chave PIX e sempre o CPF do cadastro financeiro do proprio usuario; a tela mostra o CPF mascarado e nao pede chave.
 - Usuario tem cadastro financeiro completo.
 
 Fluxo atual:
 
 1. Usuario acessa "Sacar".
-2. Informa valor e CPF.
+2. Informa o valor (a chave PIX e o CPF do cadastro financeiro, exibido mascarado).
 3. Sistema valida saldo disponivel dentro da mesma transacao que reserva o valor (carteira travada; dois pedidos simultaneos acima do disponivel: so um passa).
 4. Sistema cria withdrawal com status `requested`.
 5. Sistema cria debito no ledger com status `blocked` na categoria `pessoal` ("saque em andamento"), na mesma operacao do withdrawal.
