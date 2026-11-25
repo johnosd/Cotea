@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-25
 
-**Status**: Em Execução
+**Status**: Convergida
 
 **Input**: Backlog `V2-04 · P1 · Cadastro financeiro sob demanda e permissões de
 conta` — especificar o estado "cadastro financeiro completo", separado de
@@ -41,7 +41,8 @@ Achados adicionais no levantamento (2026-11-25):
   unicidade, armazenamento sempre criptografado, CPF travado após salvo,
   exibição mascarada, endereço editável mas nunca de volta a incompleto.
 - Exigência do cadastro completo, verificada no servidor, para **concluir**:
-  pagamento de assinatura (por qualquer meio, inclusive saldo), depósito PIX
+  pagamento de assinatura (por qualquer meio, inclusive saldo), uso de saldo da
+  carteira, depósito PIX
   (inclusive a recarga feita dentro do checkout), solicitação de saque e criação
   de grupo.
 - Conclusão do cadastro **dentro do próprio fluxo** (checkout, recarga, saque,
@@ -113,8 +114,9 @@ completo.
 
 ### User Story 2 - Exigência do cadastro completo na conclusão de ações financeiras (Priority: P1)
 
-Ao concluir um pagamento de assinatura (qualquer meio), um depósito PIX, um
-pedido de saque ou a criação de um grupo, o servidor confere o cadastro
+Ao concluir um pagamento de assinatura (qualquer meio), um uso de saldo da
+carteira, um depósito PIX, um pedido de saque ou a criação de um grupo, o
+servidor confere o cadastro
 financeiro completo. Se faltar algo, a ação é recusada antes de qualquer
 cobrança, débito, crédito ou gravação, com um código estável e a lista do que
 falta. O usuário pode navegar e preencher formulários antes; só a conclusão é
@@ -317,8 +319,9 @@ segunda execução não altera nada.
   (`***.ddd.ddd-**`); a API do perfil NÃO DEVE devolver o CPF completo.
 - **FR-011**: O servidor DEVE recusar, antes de qualquer cobrança, débito,
   crédito, reserva ou gravação, a conclusão de: pagamento de assinatura (por
-  qualquer meio), criação de depósito PIX, solicitação de saque e criação de
-  grupo, quando o cadastro financeiro não estiver completo.
+  qualquer meio), uso de saldo da carteira, criação de depósito PIX,
+  solicitação de saque e criação de grupo, quando o cadastro financeiro não
+  estiver completo.
 - **FR-012**: A recusa de FR-011 DEVE trazer um código estável (o mesmo nas
   quatro ações) e a lista do que falta (`cpf`, `endereco`), em mensagem
   compreensível ao usuário.
@@ -434,3 +437,8 @@ segunda execução não altera nada.
   formato válido e marca "CEP não confirmado"; não bloqueia a ação financeira.
 - Q: CEP geral de cidade (sem rua e bairro)? → A: Cidade e UF vêm do CEP e
   ficam travadas; rua e bairro são digitados e obrigatórios.
+- Q: O uso genérico de saldo da carteira (`POST /api/wallet/pay`) também exige o
+  cadastro completo? → A: Sim. Decidido no `sdd-plan` (D-11) por ser
+  pagamento com saldo — deixá-lo aberto seria uma brecha — e registrado aqui
+  pelo `sdd-converge` (C-04); FR-011 e US2 ajustados. Reflete também o Fluxo 16
+  de `.docs/regras-negocio-v2.md`.

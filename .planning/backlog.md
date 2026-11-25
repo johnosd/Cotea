@@ -348,7 +348,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
-| 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Em Execução | 56/60 tasks | 2026-11-25 |
+| 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Convergida | 62/62 tasks | 2026-11-25 |
 
 ## Melhorias Ad-hoc
 

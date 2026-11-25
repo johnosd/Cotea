@@ -233,8 +233,8 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | --- | --- |
 | Código das 6 histórias (regras, gate, perfil, formulário embutido, PIX/saque com CPF do perfil, correção pelo admin, migração) | Implementado; contratos 20/20 (001-004), `npm test` 277/277, `npm run lint` 0 erros, `npm run build` ok |
 | Documentação | `.docs/regras-negocio-v2.md` (Usuário validado, Fluxos 3, 15, 16, 18), `CLAUDE.md` e nota na V2-17 do backlog atualizados |
-| Banco de produção | **Migração não aplicada e índice `cpfHash_unico` não criado** (T042, decisão do usuário: junto do deploy). Dry-run: 1 `marcar_invalido` (admin), 0 conflitos |
-| Validação manual | Parcial (T043): falta salvamento real pelo formulário e PIX/saque de ponta a ponta com conta de cadastro completo |
+| Banco de produção | Migração aplicada (1 `marcar_invalido`, 0 conflitos) e índice `cpfHash_unico` criado (T042, 2026-11-25) |
+| Validação manual | Concluída (T043): CPF real salvo pelo perfil; recarga e saque de ponta a ponta usando o CPF do perfil; registros de teste limpos |
 
 ## Riscos e Decisões
 
@@ -245,17 +245,17 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | ID | Risco/Decisão | Impacto | Mitigação/Encaminhamento |
 | --- | --- | --- | --- |
-| R-001 | ViaCEP indisponível ou lento a partir da Vercel | Médio (salvamento do endereço) | D-06: timeout 3 s e fallback `indisponivel` → aceita com `cepConfirmado: false` (FR-007) |
-| R-002 | CPF repetido entre contas impede criar o índice único | Alto na implantação | D-10: migração em dry-run antes; conflito para o processo; índice só depois |
-| R-003 | Os 3 usuários sem cadastro passam a ser barrados em pagamento/saque até completar | Médio (atrito), esperado (FR-021) | Formulário embutido (US3) reduz o atrito; comunicar no deploy |
-| R-004 | Testes existentes dos handlers financeiros quebram com o gate | Baixo | T020: mockar `lib/cadastro-financeiro-servidor` como `{ ok: true }` nesses arquivos (nenhum é contrato travado) |
-| R-005 | O contrato 3 fixa a posição do gate (antes de ler o grupo/corpo) | Baixo | É a decisão D-03; executor não deve mover o gate para depois das validações |
-| R-006 | `wallet/pay` incluído no gate sem estar explícito na spec | Baixo | D-11; atualizar a RN no Polish (T040) |
+| R-001 | ViaCEP indisponível ou lento a partir da Vercel | Médio (salvamento do endereço) | Resolvido: `lib/cep.js` com timeout de 3 s e `indisponivel` → `cepConfirmado: false` (testado em `tests/cadastro/cep.test.js` e no contrato 2); consulta do servidor confirmada em produção (CEP inexistente → 400). D-06: timeout 3 s e fallback `indisponivel` → aceita com `cepConfirmado: false` (FR-007) |
+| R-002 | CPF repetido entre contas impede criar o índice único | Alto na implantação | Resolvido: migração aplicada com 0 conflitos e índice criado (T042) |
+| R-003 | Os 3 usuários sem cadastro passam a ser barrados em pagamento/saque até completar | Médio (atrito), esperado (FR-021) | Resolvido: formulário embutido nas cinco telas (Fase 5) e validado no navegador. Formulário embutido (US3) reduz o atrito; comunicar no deploy |
+| R-004 | Testes existentes dos handlers financeiros quebram com o gate | Baixo | Resolvido: os 5 arquivos de teste simulam o gate aprovado (T020), asserções intactas; suíte 280/280. T020: mockar `lib/cadastro-financeiro-servidor` como `{ ok: true }` nesses arquivos (nenhum é contrato travado) |
+| R-005 | O contrato 3 fixa a posição do gate (antes de ler o grupo/corpo) | Baixo | Resolvido: gate logo após sessão/`contaValidada`/bloqueio nos cinco handlers (contrato 3 verde). É a decisão D-03; executor não deve mover o gate para depois das validações |
+| R-006 | `wallet/pay` incluído no gate sem estar explícito na spec | Baixo | Resolvido: spec emendada (FR-011, US2, Clarifications — T046) e Fluxo 16 da RN atualizado. D-11; atualizar a RN no Polish (T040) |
 | R-007 | Admin único não consegue corrigir o próprio CPF | Baixo | Premissa da spec; correção fica fora do produto até haver 2º admin |
-| R-008 | CPF legado em texto puro antes da migração | Baixo | `decryptCPF` já aceita legado; gate e travamento funcionam antes e depois da migração |
+| R-008 | CPF legado em texto puro antes da migração | Baixo | Resolvido: migração aplicada (T042); 0 CPF em texto puro no banco. `decryptCPF` já aceita legado; gate e travamento funcionam antes e depois da migração |
 | R-009 | O contrato 3 mocka `lib/cadastro-financeiro-servidor` expondo só `verificarCadastroFinanceiro`; o endpoint não pode importar dali o salvamento | Baixo (estrutura) | Resolvido: leitura/gravação (`carregarUsuario`, `cpfClaroDoUsuario`, `resumoCadastroFinanceiro`, `salvarCadastroFinanceiro`) movidas para `lib/cadastro-financeiro-perfil.js`; o `-servidor` expõe só o gate (ajusta D-03/D-05 sem mudar o comportamento) |
 | R-010 | CSP `connect-src 'self'` (`next.config.mjs`) bloqueia o ViaCEP no navegador; o perfil antigo nunca preencheu o CEP e apagava UF/cidade/bairro/rua ao abrir | Médio (UX e perda de dados ao salvar) | Resolvido: proxy `GET /api/cep/[cep]` (sessão obrigatória, `lib/cep.js`) e `components/EnderecoCampos.js`, que só consulta quando o usuário altera o CEP (T011a/T011b). D-08 passa a usar o proxy em vez do ViaCEP direto |
-| R-011 | O CPF legado (texto puro) do único usuário com CPF não passa no dígito verificador | Baixo | Esperado pela spec: conta como ausente (campo editável); a migração (T042) o move para `cpfLegadoInvalido`; o usuário precisa informar um CPF válido para operar |
+| R-011 | O CPF legado (texto puro) do único usuário com CPF não passa no dígito verificador | Baixo | Resolvido: CPF legado movido para `cpfLegadoInvalido` (T042) e o usuário salvou o CPF real (T043). Esperado pela spec: conta como ausente (campo editável); a migração (T042) o move para `cpfLegadoInvalido`; o usuário precisa informar um CPF válido para operar |
 
 ## Execution Notes
 
@@ -269,20 +269,16 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | --- | --- | --- | --- |
 | 2026-11-25 | Fase 2 (Fundação) | Regras puras, hashCPF, consultarCep, gate/salvamento no servidor, schema e índice; contratos 1-2 verdes; 34 testes em `tests/cadastro` + B-09 | — |
 | 2026-11-25 | Fase 3 (US1) | Endpoint de cadastro, `atualizarPerfil` (não apaga CPF, GET mascarado), perfil com CPF travado, `EnderecoCampos` + proxy de CEP (CSP); módulo `-perfil` separado do gate (R-009); contrato 4 verde | Gravação pela tela não exercitada contra o banco (T043) |
-
 | 2026-11-25 | Fase 4 (US2) | Gate ligado aos cinco handlers; 5 arquivos de teste existentes passam a simular o gate aprovado; `tests/cadastro/gate-handlers.test.js` com o gate real; suíte 263/264 (falta só o contrato da Fase 6) | — |
-
 | 2026-11-25 | Fase 5 (US3) | `CadastroFinanceiroForm` + formulário embutido em checkout, recarga, saque, uso de saldo e criação de grupo; validado no navegador (409 real → formulário → reenvio com o mesmo corpo), sem efeitos no banco | Salvamento real pelo formulário em T043 |
-
 | 2026-11-25 | Fase 6 (US4) | PIX e saque usam o CPF do gate e ignoram o do corpo; telas sem campo de CPF/chave (saque mostra o CPF mascarado); suíte 269/269, contratos 20/20 | — |
-
 | 2026-11-25 | Fase 7 (US5) | Permissão `CORRIGIR_CPF`, rota de correção com motivo e auditoria sem CPF, ação no painel; 5 testes; suíte 274/274 | — |
-
 | 2026-11-25 | Fase 8 (US6) | `planejarMigracaoCpf` + script de migração (dry-run/`--aplicar`, conflito aborta); 3 testes; dry-run no banco: 1 inválido, 0 conflitos | Aplicar + índice (T042) com autorização |
-
 | 2026-11-25 | Fase 9 (Polish) | RN, CLAUDE.md e V2-17 atualizados; quickstart parcial no servidor real (duplicidade, DV, CEP, correção pelo admin, gate) com limpeza; gates: test 277/277, lint 0 erros, build ok | T042 no deploy; T043 restante com conta de cadastro completo |
+| 2026-11-25 | Phase 10 (Convergence) | C-01: `/api/usuario` não devolve mais o CPF completo (3 testes); C-04: spec emendada (uso de saldo em FR-011/US2 + Clarifications); suíte 280/280 | T042 e T043 (deploy) |
+| 2026-11-25 | T042/T043 | Migração aplicada (1 inválido, 0 conflitos) e índice `cpfHash_unico` criado; CPF real salvo pelo usuário; recarga e saque de R$ 5 pelas telas com o CPF do perfil; limpeza feita | — |
 
-**PRÓXIMO**: no deploy — `scripts/migrar-cpf-usuarios.js` (dry-run → `--aplicar` → dry-run 0) → `node database/setupDatabase.js` → deploy; depois concluir T043 (o admin informa o CPF real no perfil e testa PIX/saque) e rodar `sdd-converge`
+**PRÓXIMO**: `sdd-converge 004-cadastro-financeiro` (todas as 62 tasks concluídas)
 
 ## Arquivos Principais
 
@@ -302,3 +298,28 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 - Teste novo que chame `pay`, `pix/simulated/create`, `withdraw/create`, `wallet/pay` ou `POST /api/grupos` precisa simular `lib/cadastro-financeiro-servidor` (ou semear usuário com CPF cifrado válido + endereço válido), senão recebe 409 do gate.
 - Para validar telas sem gravar no banco de produção: interceptar `PUT /api/perfil/cadastro-financeiro` com `page.route` e conferir que a ação é reenviada com o mesmo corpo; as recusas 409 do gate não têm efeito.
 - A sessão do navegador do Playwright expira (login Google): se `/api/auth/session` vier vazio, abrir `/auth/signin` e pedir ao usuário para entrar de novo; páginas de admin carregam a lista depois do título — esperar o conteúdo antes de contar linhas.
+
+## Resultado Final
+
+Convergida em 2026-11-25 (segunda passada do `sdd-converge`, sem achados).
+
+**O que foi construído**
+
+- Regras puras em `lib/cadastro-financeiro.js` (CPF com dígito verificador, endereço com UF/CEP/S/N, cadastro completo derivado, plano de salvamento com CPF travado, plano de migração).
+- Gate `verificarCadastroFinanceiro` em `lib/cadastro-financeiro-servidor.js`, ligado a `assinaturas/pay`, `pix/simulated/create`, `withdraw/create`, `wallet/pay` e `POST /api/grupos`: 409 `cadastro_financeiro_incompleto` + `pendencias` antes de qualquer efeito.
+- Leitura/gravação do cadastro em `lib/cadastro-financeiro-perfil.js`; `GET/PUT /api/perfil/cadastro-financeiro`; `atualizarPerfil` e `/api/usuario` sem CPF completo; CPF cifrado + `cpfHash` com índice único parcial `cpfHash_unico`.
+- Formulário embutido (`components/CadastroFinanceiroForm.js` + `components/EnderecoCampos.js`) no checkout, recarga, saque, uso de saldo e criação de grupo; PIX e saque usam o CPF do perfil e as telas não pedem mais CPF/chave.
+- Correção de CPF pelo admin (`PUT /api/admin/users/[id]/cpf`, `PERMISSIONS.CORRIGIR_CPF`) com auditoria só do motivo.
+- Migração `scripts/migrar-cpf-usuarios.js` aplicada no banco (1 CPF inválido movido para `cpfLegadoInvalido`, 0 conflitos) e índice criado.
+- Verificação: contratos 20/20 (001-004), `npm test` 280/280, lint 0 erros, build ok; validação em navegador por fase e ponta a ponta (CPF real salvo, recarga e saque usando o CPF do perfil, registros de teste limpos).
+
+**Desvios em relação ao plano original**
+
+- R-009: o gate ficou sozinho em `lib/cadastro-financeiro-servidor.js` (o contrato 3 o simula por inteiro); salvamento/resumo foram para `lib/cadastro-financeiro-perfil.js` — ajusta D-03/D-05 sem mudar o comportamento.
+- R-010: a CSP (`connect-src 'self'`) bloqueava o ViaCEP no navegador; D-08 passou a usar o proxy `GET /api/cep/[cep]`, e o componente `EnderecoCampos` corrigiu o perfil antigo, que apagava o endereço ao abrir (T011a/T011b).
+- D-11: o uso de saldo (`wallet/pay`) entrou no gate; a spec foi emendada na convergência (T046).
+- C-01 (convergência): `/api/usuario`, fora da lista original de consumidores, ainda devolvia o CPF completo e foi corrigida (T045).
+
+**Em aberto**
+
+- R-007: com um único admin, a correção do próprio CPF dele continua fora do produto (premissa da spec).

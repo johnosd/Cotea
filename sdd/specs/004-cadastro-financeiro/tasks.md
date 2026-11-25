@@ -278,9 +278,11 @@ description: "Lista de tasks da feature 004-cadastro-financeiro"
 
 - [X] T040 Atualizar `.docs/regras-negocio-v2.md`: Fluxo 3 (CPF com dígito verificador, único, travado, mascarado; PIX e saque usam o CPF do perfil), "Usuário validado" (gap resolvido) e a inclusão do uso de saldo (`wallet/pay`) no cadastro exigido (D-11)
 - [X] T041 [P] Atualizar `CLAUDE.md` (toda ação financeira nova chama `verificarCadastroFinanceiro`; CPF só via `encryptCPF` + `hashCPF`) e, em `.planning/backlog.md`, anotar na V2-17 que a chave = CPF do perfil já foi entregue pela 004
-- [ ] T042 **Com autorização do usuário** (banco de produção): rodar a migração conforme `quickstart.md` (dry-run → `--aplicar` → dry-run com 0 ações) e só então `node database/setupDatabase.js` para criar o índice; parar e reportar se houver conflito
-- [ ] T043 Executar o `quickstart.md` ponta a ponta (passos 1-6), com usuários de teste `@example.invalid` limpos ao final
+- [X] T042 **Com autorização do usuário** (banco de produção): rodar a migração conforme `quickstart.md` (dry-run → `--aplicar` → dry-run com 0 ações) e só então `node database/setupDatabase.js` para criar o índice; parar e reportar se houver conflito
+  - **Feito em 2026-11-25** (autorizado pelo usuário): dry-run → 1 `marcar_invalido` (admin), 0 conflitos; `--aplicar` → 1 alterado + auditoria `user.cpf_migrado`; dry-run de novo → 0 ações; `node database/setupDatabase.js` → índice `cpfHash_unico` (único, parcial `cpfHash: { $type: 'string' }`) criado.
+- [X] T043 Executar o `quickstart.md` ponta a ponta (passos 1-6), com usuários de teste `@example.invalid` limpos ao final
   - **Parcial (2026-11-25)**: executado no servidor real (sessão admin): CPF de outra conta → 409 `cpf_indisponivel` sem vazar id/e-mail; CPF com DV errado → 400; CEP inexistente → 400 "CEP nao encontrado" (consulta ViaCEP pelo servidor funcionando); correção pelo admin sem motivo → 400, do próprio CPF → 403, com motivo → 200 + `user.cpf_corrected` só com o motivo; gate barra o admin (CPF inválido) com 409 `pendencias: ['cpf']`; conta do admin intacta; usuário de teste e auditoria removidos. Telas validadas nas Fases 3, 5, 6 e 7. **Falta**: salvamento real pelo formulário e PIX/saque de ponta a ponta com uma conta de cadastro completo logada (só há login Google; a única conta acessível é a do admin, cujo CPF real o usuário precisa informar) — fazer após o deploy/T042.
+  - **Concluído em 2026-11-25** (após T042, autorizado pelo usuário): o usuário salvou o CPF real no perfil → banco com `cpf` cifrado + `cpfHash`, `cpfLegadoInvalido` preservado; `GET /api/perfil/cadastro-financeiro` → completo, travado, mascarado, CEP confirmado. Recarga PIX de R$ 5 pela tela (sem campo de CPF) → 201/200; saque de R$ 5 pela tela (chave exibida `CPF ***.ddd.ddd-**`, corpo sem CPF) → 201. No banco, `payments.pixCpf` e `withdrawals.pixKeyCpf` cifrados e iguais ao CPF do perfil. Registros do teste apagados (1 pagamento, 1 saque, 2 lançamentos, 2 auditorias); saldo de volta ao estado anterior.
 - [X] T044 Gates: `npm test`, `npm run lint`, `npm run build` (com o `next dev` parado; depois apagar `.next` e subir o dev de novo)
 
 ### Checklist de Release
@@ -296,9 +298,9 @@ description: "Lista de tasks da feature 004-cadastro-financeiro"
 - [X] `npm test` e `npm run lint` passando
 - [X] `npm run build` passando (dev server parado durante o build)
 - [X] Schema `users.schema.json` e índice `cpfHash_unico` em `setupDatabase.js` e `setup-indexes.js`, com o teste do B-09 verde
-- [ ] Migração aplicada e índice criado no banco (T042), com 0 conflitos
+- [X] Migração aplicada e índice criado no banco (T042), com 0 conflitos
 - [X] Consumidores das APIs alteradas atualizados (`contracts/api-cadastro-financeiro.md`)
-- [ ] `quickstart.md` executado com sucesso
+- [X] `quickstart.md` executado com sucesso
 
 ---
 
@@ -355,3 +357,22 @@ Task: "T017 [P] [US2] Gate em pages/api/grupos/index.js"
 - Commitar após cada fase coerente
 
 <!-- sdd-converge anexa "## Phase N: Convergence" abaixo desta linha -->
+
+---
+
+## Phase 10: Convergence
+
+**Purpose**: Lacunas encontradas pelo `sdd-converge` em 2026-11-25. As pendências C-02 (migração e índice no banco) e C-03 (validação com conta de cadastro completo) continuam nas tasks **T042** e **T043**, ainda abertas — não foram duplicadas aqui.
+
+- [X] T045 [US1] (C-01 · HIGH · FR-010, SC-005, Constitution I) Em `pages/api/usuario.js`, parar de devolver o CPF completo: remover `cpf` da resposta e devolver `cpfMascarado`/`cpfTravado` via `resumoCadastroFinanceiro` de `lib/cadastro-financeiro-perfil.js` (a rota não tem consumidores em `pages/`/`components/`; alternativa aceitável é removê-la, registrando a decisão em `plan.md`); teste em `tests/cadastro/` garantindo que a resposta não contém o CPF
+- [X] T046 (C-04 · LOW · FR-011, US2, plan D-11) Emendar `spec.md` para incluir o uso de saldo (`POST /api/wallet/pay`) entre as ações que exigem cadastro completo: acrescentar a decisão em `## Clarifications` (sessão 2026-11-25) e ajustar FR-011/US2 — mudança só de documentação, já refletida em `.docs/regras-negocio-v2.md` (Fluxo 16)
+
+**Critério de Conclusão**: T045 com teste verde e `npm test` íntegro; T046 com a spec consistente com D-11; depois, `sdd-converge` de novo (que só fecha limpo com T042 e T043 também concluídas).
+
+**Registro da Fase**:
+
+- Status: concluída (2026-11-25)
+- Feito: `pages/api/usuario.js` deixa de devolver `cpf` e passa a devolver `cpfMascarado`/`cpfTravado` via `resumoCadastroFinanceiro` (rota mantida, só sem o CPF completo). `spec.md`: FR-011, US2 e Escopo incluem o uso de saldo da carteira; nova entrada em `## Clarifications` registrando a decisão D-11 (a resposta original da sessão fica como histórico).
+- Contrato: sem contrato nesta fase; trava 004 íntegra.
+- Testes executados: `npx vitest run tests/cadastro/usuario-sem-cpf.test.js` → 3/3 (cifrado, texto puro legado e sem CPF — nenhum vaza); `npx vitest run` → 43 arquivos, 280/280; `npx eslint` nos arquivos tocados → limpo.
+- Pendências: T042 e T043 (abertas, dependem do deploy) — necessárias para o `sdd-converge` fechar limpo.

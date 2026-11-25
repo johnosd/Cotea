@@ -86,6 +86,8 @@ No Windows, rode os testes a partir de `J:\Cotea` (drive em maiúscula); de `j:\
 
 Migração de preços dos grupos (regra única de preço por vaga): `node --env-file=.env.local scripts/migrar-precos-grupos.js` mostra o que mudaria; com `--aplicar` grava. No deploy, rode antes e de novo depois de publicar o código.
 
+Migração dos CPFs para o cadastro financeiro: `node --env-file=.env.local scripts/migrar-cpf-usuarios.js` mostra o que mudaria; com `--aplicar` grava (CPF em texto puro vira cifrado + hash; CPF inválido vai para `cpfLegadoInvalido`; CPF repetido entre contas aborta). Depois de aplicar, rode `node database/setupDatabase.js` para criar o índice único `cpfHash_unico`.
+
 ## Estrutura de pastas
 
 ```
@@ -180,4 +182,6 @@ O middleware (`middleware.js`) protege todas as rotas não públicas:
 - CORS restrito ao domínio configurado em `NEXT_PUBLIC_SITE_URL`
 - Rate limiting nas API routes via `lib/ratelimit.js`
 - Criptografia de dados sensíveis via `lib/encryption.js` (chave de 32 bytes)
+- CPF sempre cifrado em repouso, com impressão digital HMAC (`cpfHash`) para garantir um CPF por conta; travado depois de salvo (só o admin corrige, com motivo auditado) e nunca devolvido completo ao usuário
+- Pagamento, depósito PIX, saque, uso de saldo e criação de grupo exigem cadastro financeiro completo (CPF válido + endereço), verificado no servidor; PIX e saque usam sempre o CPF do perfil
 - Validação de variáveis de ambiente na inicialização (`lib/env.js`)
