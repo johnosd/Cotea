@@ -3,6 +3,33 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import Header from '../components/Header';
+import { ROTULOS_STATUS_GRUPO, statusEfetivo } from '../lib/moderacao';
+
+// 005-aprovacao-grupos (FR-022): estado de moderação e motivo. O motivo só chega ao dono
+// (a API não o envia ao membro).
+const ESTILO_ESTADO = {
+  em_aprovacao: 'bg-blue-50 text-blue-700',
+  ajustes: 'bg-amber-50 text-amber-800',
+  rejeitado: 'bg-red-50 text-red-700',
+  cancelado: 'bg-gray-100 text-gray-700',
+};
+
+function EstadoModeracao({ grupo }) {
+  const estado = statusEfetivo(grupo);
+  if (estado === 'ativo') return null;
+  const decisao = grupo.moderacao?.ultimaDecisao;
+  const origemCotea = grupo.moderacao?.cancelamento?.origem === 'cotea';
+  const rotulo = estado === 'cancelado' && origemCotea ? 'Cancelado pelo Cotea' : ROTULOS_STATUS_GRUPO[estado] || estado;
+  const texto = ['ajustes', 'rejeitado', 'cancelado'].includes(estado) ? decisao?.texto : null;
+  return (
+    <div className="mt-1 space-y-1">
+      <span className={`inline-block text-[11px] font-semibold rounded-full px-2 py-0.5 ${ESTILO_ESTADO[estado] || 'bg-gray-100 text-gray-700'}`}>
+        {rotulo}
+      </span>
+      {texto && <p className="text-[11px] text-gray-700 line-clamp-2">Motivo: {texto}</p>}
+    </div>
+  );
+}
 
 export default function MeusGrupos() {
   const { data: session, status } = useSession();
@@ -108,6 +135,7 @@ function SecaoGrupos({ titulo, descricao, grupos }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-blue-700 font-semibold truncate">{grupo.nome}</p>
+                  <EstadoModeracao grupo={grupo} />
                   <p className="text-xs text-gray-600 truncate">{grupo.descricao || 'Grupo de assinatura'}</p>
                   <p className="text-[11px] text-gray-600 mt-1">
                     Pagamento: <span className="font-semibold text-gray-800">{statusPagamento}</span>

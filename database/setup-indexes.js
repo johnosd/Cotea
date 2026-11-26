@@ -47,6 +47,9 @@ async function createIndexes() {
   // grupos — suporta filtros por categoria e status na listagem pública
   await db.collection('grupos').createIndex({ categoria: 1, status: 1 });
 
+  // grupos — suporta a fila de moderação (pendentes por envio) e a rotina de aprovação automática (005)
+  await db.collection('grupos').createIndex({ status: 1, 'moderacao.enviadoEm': 1 });
+
   // walletTransactions — suporta cálculo de saldo em calculateBalances
   await db.collection('walletTransactions').createIndex({ walletId: 1, type: 1, status: 1 });
 

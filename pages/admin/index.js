@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
 import { PERMISSIONS, hasRole } from '../../lib/authz';
 import RotinasTab from '../../components/admin/RotinasTab';
+import ModeracaoTab from '../../components/admin/ModeracaoTab';
 
 const ROLES = [
   { value: 'user',    label: 'Usuário' },
@@ -23,6 +24,7 @@ const ROLE_BADGE = {
 const TABS = [
   { id: 'users', label: 'Usuarios', roles: PERMISSIONS.USERS_TAB },
   { id: 'groups', label: 'Grupos', roles: PERMISSIONS.GROUPS_TAB },
+  { id: 'moderacao', label: 'Moderação', roles: PERMISSIONS.GROUPS_TAB },
   { id: 'withdrawals', label: 'Saques', roles: PERMISSIONS.WITHDRAWALS_TAB },
   { id: 'audit', label: 'Auditoria', roles: PERMISSIONS.AUDIT_TAB },
   { id: 'rotinas', label: 'Rotinas', roles: PERMISSIONS.ROTINAS_TAB },
@@ -325,6 +327,21 @@ export default function AdminPanel() {
   const { data: session, status } = useSession();
 
   const isAllowed = (roles) => hasRole(session, roles);
+  const podeVerModeracao = hasRole(session, PERMISSIONS.GROUPS_TAB);
+
+  // Contador da aba Moderação (FR-027): pendentes + revisões; a própria aba o atualiza.
+  const [contagensModeracao, setContagensModeracao] = useState(null);
+  const atualizarContagens = useCallback((c) => setContagensModeracao(c || null), []);
+  useEffect(() => {
+    if (!podeVerModeracao) return undefined;
+    let cancelado = false;
+    fetch('/api/admin/moderacao?visao=pendentes')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelado && d?.contagens) setContagensModeracao(d.contagens); })
+      .catch(() => {});
+    return () => { cancelado = true; };
+  }, [podeVerModeracao]);
+  const totalModeracao = (contagensModeracao?.pendentes || 0) + (contagensModeracao?.revisao || 0);
 
   const availableTabs = useMemo(
     () => TABS.filter((t) => isAllowed(t.roles)),
@@ -389,6 +406,8 @@ export default function AdminPanel() {
         return <WithdrawalsTab allowed={isAllowed(PERMISSIONS.WITHDRAWALS_TAB)} />;
       case 'audit':
         return <AuditTab allowed={isAllowed(PERMISSIONS.AUDIT_TAB)} />;
+      case 'moderacao':
+        return <ModeracaoTab allowed={isAllowed(PERMISSIONS.GROUPS_TAB)} onContagens={atualizarContagens} />;
       case 'rotinas':
         return <RotinasTab allowed={isAllowed(PERMISSIONS.ROTINAS_TAB)} />;
       default:
@@ -420,6 +439,11 @@ export default function AdminPanel() {
                   }`}
                 >
                   {t.label}
+                  {t.id === 'moderacao' && totalModeracao > 0 && (
+                    <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2" aria-label={`${totalModeracao} pendentes`}>
+                      {totalModeracao}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

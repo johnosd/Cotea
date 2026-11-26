@@ -9,6 +9,9 @@ import { ObjectId } from 'mongodb';
 import Header from '../../components/Header';
 import { NOTA_TAXA_COTEA } from '../../components/PrevisaoPreco';
 import { precoDoGrupo } from '../../lib/preco';
+import { montarRespostaGrupo } from '../../lib/grupo-publico';
+import { identificarVisaoGrupo } from '../../lib/grupo-visao-servidor';
+import { grupoEhPublico, podeVerGrupo, statusEfetivo, vencimentoAprovacao } from '../../lib/moderacao';
 
 const DEFAULT_CONTENT = {
   nome: 'Google One',
@@ -77,16 +80,97 @@ function calcularStatusGrupo(grupo) {
   return { capacidade, membrosAtivos, vagasDisponiveis };
 }
 
-export default function GrupoDetalhe({ grupo }) {
+// 005-aprovacao-grupos (FR-022, US4/US5): estado de moderação para dono/staff e aviso de
+// cancelamento para o membro. `grupo.moderacao` só existe na visão completa (dono/staff);
+// o membro nunca recebe o motivo.
+function BannerModeracao({ estado, grupo, isAdmin, staff, jaMembro, onDesistir, desistindo, erro }) {
+  if (estado === 'ativo') return null;
+  const m = grupo.moderacao || {};
+  const texto = m.ultimaDecisao?.texto;
+  const origemCotea = m.cancelamento?.origem === 'cotea';
+
+  if (!isAdmin && !staff) {
+    if (!jaMembro || estado !== 'cancelado') return null;
+    return (
+      <div className="max-w-6xl mx-auto mb-4 rounded-xl border border-gray-300 bg-gray-100 p-4 text-sm text-gray-800" role="status">
+        <p className="font-semibold">Este grupo foi cancelado e não aceita novas entradas.</p>
+        <p>O suporte do Cotea vai entrar em contato para tratar sua participação.</p>
+      </div>
+    );
+  }
+
+  const vence = estado === 'em_aprovacao' ? vencimentoAprovacao(grupo) : null;
+  const conteudo = {
+    em_aprovacao: {
+      estilo: 'border-blue-200 bg-blue-50 text-blue-900',
+      titulo: 'Em aprovação',
+      corpo: `O Cotea analisa o grupo em até 2 dias úteis${vence ? ` (até ${vence.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })})` : ''}. Sem decisão nesse prazo, ele é aprovado automaticamente. Enquanto isso, o grupo não aparece na busca e não aceita membros.`,
+    },
+    ajustes: {
+      estilo: 'border-amber-300 bg-amber-50 text-amber-900',
+      titulo: 'Ajustes solicitados',
+      corpo: 'Corrija o grupo e reenvie para aprovação. O prazo de 2 dias úteis recomeça no reenvio.',
+    },
+    rejeitado: {
+      estilo: 'border-red-300 bg-red-50 text-red-900',
+      titulo: 'Grupo rejeitado',
+      corpo: 'A rejeição é definitiva: este grupo não pode ser editado nem reenviado.',
+    },
+    cancelado: {
+      estilo: 'border-gray-300 bg-gray-100 text-gray-800',
+      titulo: origemCotea ? 'Cancelado pelo Cotea' : 'Grupo cancelado',
+      corpo: 'O grupo não aceita novas entradas.',
+    },
+  }[estado] || { estilo: 'border-gray-300 bg-gray-100 text-gray-800', titulo: 'Indisponível', corpo: 'O grupo não está público.' };
+
+  return (
+    <div className={`max-w-6xl mx-auto mb-4 rounded-xl border p-4 text-sm space-y-2 ${conteudo.estilo}`} role="status">
+      <p className="font-semibold">{conteudo.titulo}</p>
+      <p>{conteudo.corpo}</p>
+      {texto && ['ajustes', 'rejeitado', 'cancelado'].includes(estado) && (
+        <p className="whitespace-pre-line"><span className="font-semibold">{estado === 'ajustes' ? 'Pendências: ' : 'Motivo: '}</span>{texto}</p>
+      )}
+      {isAdmin && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {estado === 'ajustes' && (
+            <Link href={`/admin/grupos/${grupo._id}`} className="px-3 py-2 rounded bg-amber-600 text-white font-semibold hover:bg-amber-700">
+              Editar e reenviar
+            </Link>
+          )}
+          {['em_aprovacao', 'ajustes'].includes(estado) && (
+            <button
+              type="button"
+              onClick={onDesistir}
+              disabled={desistindo}
+              className="px-3 py-2 rounded bg-gray-700 text-white font-semibold hover:bg-gray-800 disabled:opacity-50"
+            >
+              {desistindo ? 'Cancelando...' : 'Desistir do pedido'}
+            </button>
+          )}
+        </div>
+      )}
+      {erro && <p className="text-red-700" role="alert">{erro}</p>}
+    </div>
+  );
+}
+
+export default function GrupoDetalhe({ grupo, visao, estadoGrupo }) {
   const dados = grupo || {};
   const grupoId = dados._id || dados.id || '';
   const { data: session } = useSession();
   const router = useRouter();
   const isAuthenticated = Boolean(session?.user);
   const [userId, setUserId] = useState('');
-  const [jaMembro, setJaMembro] = useState(false);
+  // Identidade do visitante vem calculada do servidor (visao): as props públicas não carregam
+  // e-mail nem userId dos participantes.
+  const [jaMembro, setJaMembro] = useState(Boolean(visao?.jaMembro));
   const [excluindo, setExcluindo] = useState(false);
   const [erroExcluir, setErroExcluir] = useState('');
+  // Estado de moderação (005): grupo não público não aceita entrada nem exclusão física.
+  const estado = estadoGrupo?.status || 'ativo';
+  const naoPublico = estadoGrupo ? estadoGrupo.publico === false : false;
+  const [desistindo, setDesistindo] = useState(false);
+  const [erroModeracao, setErroModeracao] = useState('');
   const { capacidade, membrosAtivos, vagasDisponiveis } = useMemo(() => calcularStatusGrupo(dados), [dados]);
 
   const nome = dados.nome || DEFAULT_CONTENT.nome;
@@ -110,7 +194,6 @@ export default function GrupoDetalhe({ grupo }) {
     dados.adminNome ||
     dados.admin?.nome ||
     dados.admin?.name ||
-    dados.admin?.email ||
     DEFAULT_CONTENT.admin.nome;
   const adminAvatar = dados.adminAvatar || dados.admin?.avatar || dados.admin?.image || DEFAULT_CONTENT.admin.avatar;
   const adminSelos = Array.isArray(dados.adminSelos)
@@ -131,7 +214,6 @@ export default function GrupoDetalhe({ grupo }) {
                 dataEnvioAcesso: item?.dataEnvioAcesso,
                 status: item?.status,
                 papel: item?.papel,
-                email: item?.email,
               }
         )
       : DEFAULT_CONTENT.participantes;
@@ -148,17 +230,7 @@ export default function GrupoDetalhe({ grupo }) {
   }, [session]);
 
   useEffect(() => {
-    if (!userId) return;
-    const sessionEmail = session?.user?.email;
-    const foundParticipante = participantes.some(
-      (p) =>
-        (p?.userId && p.userId === userId) ||
-        (sessionEmail && p?.email && p.email === sessionEmail)
-    );
-    const initial = Boolean(foundParticipante);
-    setJaMembro(initial);
-
-    if (!grupoId || !isValidObjectId(userId)) return;
+    if (!userId || !grupoId || !isValidObjectId(userId)) return;
 
     let cancelado = false;
     const verificarMembro = async () => {
@@ -181,32 +253,10 @@ export default function GrupoDetalhe({ grupo }) {
     return () => {
       cancelado = true;
     };
-  }, [userId, participantes, grupoId, session]);
+  }, [userId, grupoId]);
 
-  const isAdmin = useMemo(() => {
-    const sessionEmail = session?.user?.email;
-    if (!userId && !sessionEmail) return false;
-    const adminIds = [
-      dados.adminIdString,
-      dados.adminId,
-      dados.admin?.id,
-      dados.admin?.userId,
-    ]
-      .filter(Boolean)
-      .map((id) => String(id));
-
-    const matchesAdminId = userId && adminIds.some((id) => id === userId);
-    const matchesAdminEmail = sessionEmail && (dados.adminEmail === sessionEmail || dados.admin?.email === sessionEmail);
-    const matchesAdminParticipante =
-      participantes?.length > 0 &&
-      participantes.some(
-        (p) =>
-          String(p?.papel || '').toLowerCase() === 'admin' &&
-          ((p.userId && p.userId === userId) || (sessionEmail && p.email && p.email === sessionEmail))
-      );
-
-    return Boolean(matchesAdminId || matchesAdminEmail || matchesAdminParticipante);
-  }, [userId, participantes, session, dados.adminIdString, dados.adminId, dados.admin, dados.adminEmail]);
+  // Dono/admin do grupo decidido no servidor (staff que não é dono continua sem os botões do dono).
+  const isAdmin = Boolean(visao?.souAdmin);
 
   const pendentesAcesso = useMemo(
     () => participantes.filter((p) => p?.aguardandoEnvioAcesso && p?.papel !== 'admin').length,
@@ -237,6 +287,27 @@ export default function GrupoDetalhe({ grupo }) {
     }
   };
 
+  const handleDesistir = async () => {
+    if (!grupoId || !isAdmin) return;
+    if (!window.confirm('Desistir do pedido? O grupo fica cancelado e esta acao nao pode ser desfeita.')) return;
+    setErroModeracao('');
+    setDesistindo(true);
+    try {
+      const res = await fetch(`/api/grupos/${grupoId}/moderacao`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'desistir' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Erro ao cancelar o pedido');
+      router.replace(router.asPath);
+    } catch (error) {
+      setErroModeracao(error?.message || 'Erro ao cancelar o pedido');
+    } finally {
+      setDesistindo(false);
+    }
+  };
+
   const whatsappLink = `https://wa.me/5511997383948?text=${encodeURIComponent(
     `Ola! Quero entrar no grupo de assinatura: ${nome}`
   )}`;
@@ -254,6 +325,16 @@ export default function GrupoDetalhe({ grupo }) {
       <Header />
       <main className="bg-gray-50 text-gray-900">
         <section className="pt-[110px] pb-10 px-4">
+          <BannerModeracao
+            estado={estado}
+            grupo={dados}
+            isAdmin={isAdmin}
+            staff={Boolean(estadoGrupo?.staff)}
+            jaMembro={jaMembro}
+            onDesistir={handleDesistir}
+            desistindo={desistindo}
+            erro={erroModeracao}
+          />
           <div className="max-w-6xl mx-auto grid md:grid-cols-[1.6fr_1fr] gap-6 items-start">
             <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 md:p-8 relative overflow-hidden">
               <div className="flex flex-col gap-4">
@@ -342,6 +423,10 @@ export default function GrupoDetalhe({ grupo }) {
                   <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold shadow bg-gray-300 text-gray-600">
                     <FaWhatsapp /> Administrador do grupo
                   </div>
+                ) : naoPublico ? (
+                  <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold shadow bg-gray-300 text-gray-600" aria-disabled="true">
+                    Grupo indisponivel para novas entradas
+                  </div>
                 ) : jaMembro ? (
                   <Link
                     href={whatsappLink}
@@ -368,7 +453,7 @@ export default function GrupoDetalhe({ grupo }) {
                   </Link>
                 )}
                 <div className="flex flex-col gap-2">
-                  {!jaMembro && !isAdmin && (
+                  {!jaMembro && !isAdmin && !naoPublico && (
                     <Link
                       href={
                         isAuthenticated
@@ -382,7 +467,7 @@ export default function GrupoDetalhe({ grupo }) {
                       <FaWhatsapp /> {isAuthenticated ? 'Entrar no grupo' : 'Entrar para participar'}
                     </Link>
                   )}
-                  {jaMembro && !isAdmin && (
+                  {jaMembro && !isAdmin && !naoPublico && (
                     <Link
                       href={`/grupos/${grupoId}/cancelar`}
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold shadow bg-amber-600 text-white hover:bg-amber-700"
@@ -390,7 +475,7 @@ export default function GrupoDetalhe({ grupo }) {
                       Cancelar participacao
                     </Link>
                   )}
-                  {isAdmin && (
+                  {isAdmin && !naoPublico && (
                     <>
                       {pendentesAcesso > 0 && (
                         <Link
@@ -568,6 +653,10 @@ export default function GrupoDetalhe({ grupo }) {
             <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-full font-semibold shadow bg-gray-300 text-gray-600">
               <FaWhatsapp /> Administrador do grupo
             </div>
+          ) : naoPublico ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-full font-semibold shadow bg-gray-300 text-gray-600" aria-disabled="true">
+              Indisponivel
+            </div>
           ) : jaMembro ? (
             <Link
               href={whatsappLink}
@@ -638,7 +727,7 @@ function Badge({ text, variant = 'info' }) {
   return <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${variants[variant] || variants.info}`}>{text}</span>;
 }
 
-export async function getServerSideProps({ params }) {
+export async function getServerSideProps({ params, req, res }) {
   const { id } = params;
 
   if (!ObjectId.isValid(id)) {
@@ -648,14 +737,15 @@ export async function getServerSideProps({ params }) {
   try {
     const client = await clientPromise;
     const db = client.db(process.env.MONGODB_DB);
+    const grupoId = new ObjectId(id);
 
-    const grupoDoc = await db.collection('grupos').findOne({ _id: new ObjectId(id) });
+    const grupoDoc = await db.collection('grupos').findOne({ _id: grupoId });
     if (!grupoDoc) return { notFound: true };
 
     const membros = await db
       .collection('membrosGrupo')
       .aggregate([
-        { $match: { grupoId: new ObjectId(id) } },
+        { $match: { grupoId } },
         {
           $lookup: {
             from: 'users',
@@ -681,39 +771,76 @@ export async function getServerSideProps({ params }) {
       .toArray();
 
     const adminMember = membros.find((m) => m.papel === 'admin');
+    let adminIdResolvido = null;
+    if (grupoDoc.adminId && ObjectId.isValid(grupoDoc.adminId)) adminIdResolvido = grupoDoc.adminId;
+    if (!adminIdResolvido && grupoDoc.adminIdString && ObjectId.isValid(grupoDoc.adminIdString)) {
+      adminIdResolvido = new ObjectId(grupoDoc.adminIdString);
+    }
+    if (!adminIdResolvido && adminMember?.userId) adminIdResolvido = adminMember.userId;
+
+    // Quem está vendo: staff e dono/admin do grupo têm a visão completa; o resto, a pública
+    // (allowlist de lib/grupo-publico.js).
+    const visao = await identificarVisaoGrupo({ req, res, db, grupoId, grupo: grupoDoc, adminIdResolvido });
+    const completa = visao.completa;
+
+    const ativos = membros.filter((m) => m.status !== 'banido');
+    const jaMembro = Boolean(visao.userId) && ativos.some((m) => m.userId && String(m.userId) === visao.userId);
+
+    // 005-aprovacao-grupos (FR-006, D-06): grupo não público só para staff, dono ou membro
+    // atual não banido; os demais recebem a mesma página de "não encontrado".
+    const publico = grupoEhPublico(grupoDoc);
+    if (!publico && !podeVerGrupo({ grupo: grupoDoc, ehStaff: visao.staff, ehDono: visao.dono, ehMembroAtual: jaMembro })) {
+      return { notFound: true };
+    }
+
+    // E-mail só serve de nome de exibição na visão completa; nunca vai para as props como campo.
     const adminNome =
       adminMember?.nome ||
       grupoDoc.adminNome ||
-      adminMember?.email ||
+      (completa ? adminMember?.email : '') ||
       grupoDoc.admin?.nome ||
       'Administrador';
-    const adminEmail = adminMember?.email || grupoDoc.adminEmail || '';
+    const adminEmail = completa ? adminMember?.email || grupoDoc.adminEmail || '' : '';
     const adminAvatar = adminMember?.avatar || grupoDoc.adminAvatar || '';
 
-    const participantes = membros
-      .filter((m) => m.status !== 'banido')
-      .map((m, idx) => ({
-        nome: m.nome || m.email || `Membro ${idx + 1}`,
+    // Público: só o que a lista de participantes exibe (nome e avatar). Dono/staff: também o
+    // que os botões da área do dono usam. E-mail de participante não sai para ninguém.
+    const participantes = ativos.map((m, idx) => {
+      const exibicao = {
+        nome: m.nome || `Membro ${idx + 1}`,
         avatar: m.avatar || `https://i.pravatar.cc/120?img=${(idx % 70) + 1}`,
+      };
+      if (!completa) return exibicao;
+      return {
+        ...exibicao,
         userId: m.userId ? String(m.userId) : undefined,
-        email: m.email || undefined,
         status: m.status,
         papel: m.papel,
         aguardandoEnvioAcesso: m.aguardandoEnvioAcesso,
         dataEnvioAcesso: m.dataEnvioAcesso,
-      }));
+      };
+    });
 
     const grupo = {
-      ...grupoDoc,
-      adminNome,
-      adminEmail,
-      adminAvatar,
+      ...montarRespostaGrupo(grupoDoc, {
+        adminIdResolvido, adminNome, adminEmail, adminAvatar, membrosAtivos: ativos.length, completa,
+      }),
       participantes,
     };
 
-    return { props: { grupo: JSON.parse(JSON.stringify(grupo)) } };
+    // Identidade do visitante calculada no servidor: a página não precisa de e-mail nem de
+    // userId dos participantes para saber se o usuário logado é membro ou dono.
+    // `estadoGrupo`: status efetivo, para a página esconder "Participar" e mostrar os avisos de
+    // moderação (o objeto `moderacao` só vai na visão completa — T036/T041).
+    return {
+      props: {
+        grupo: JSON.parse(JSON.stringify(grupo)),
+        visao: { jaMembro, souAdmin: visao.dono },
+        estadoGrupo: { publico, status: statusEfetivo(grupoDoc), staff: visao.staff },
+      },
+    };
   } catch (error) {
     console.error('Erro ao carregar grupo:', error);
-    return { props: { grupo: null } };
+    return { props: { grupo: null, visao: { jaMembro: false, souAdmin: false } } };
   }
 }

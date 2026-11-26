@@ -1,4 +1,4 @@
-﻿
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
@@ -26,8 +26,7 @@ export default function NovoGrupo() {
   const [confiabilidade] = useState('Selo ouro');
   const [tipoGrupo, setTipoGrupo] = useState('publico');
   const [categoria, setCategoria] = useState('jogos');
-  const [statusGrupo, setStatusGrupo] = useState('ativo');
-  const [statusDetalhado, setStatusDetalhado] = useState('em_formacao');
+  // status/statusDetalhado não são enviados: todo grupo novo nasce em aprovação (005, FR-002).
   const [servicoPreAssinado, setServicoPreAssinado] = useState(false);
   const [envioAutomaticoAcesso, setEnvioAutomaticoAcesso] = useState(false);
   const [filaEsperaAtiva, setFilaEsperaAtiva] = useState(false);
@@ -144,8 +143,6 @@ export default function NovoGrupo() {
     const payload = {
       nome,
       tipoGrupo,
-      status: statusGrupo,
-      statusDetalhado,
       capa,
       imageUrl: capa,
       imageKey,
@@ -210,8 +207,8 @@ export default function NovoGrupo() {
         if (uploadData.key) setImageKey(uploadData.key);
       }
 
-      setMsg('Grupo criado com sucesso!');
-      setSucesso('Grupo criado com sucesso!');
+      setMsg('Grupo enviado para aprovação!');
+      setSucesso('Grupo enviado para aprovação. O Cotea analisa em até 2 dias úteis; você será notificado.');
       setTimeout(() => router.push('/admin/grupos'), 1500);
     } catch (error) {
       setMsg(error.message || 'Erro ao criar grupo.');

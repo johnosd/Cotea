@@ -39,18 +39,10 @@ notificações, conta e auditoria (V2-22 a V2-26).
 - **V2-04** — especificada em `sdd/specs/004-cadastro-financeiro/spec.md` (ver
   `## Features`).
 
-- **V2-05 · P0 · Aprovação, moderação e visibilidade de grupos públicos** —
-  Estados `em_aprovacao`, `ajustes`, `rejeitado`, `suspenso`, `cancelado` e
-  estados públicos; fila do admin do sistema com aprovar/rejeitar/pedir ajuste
-  e motivo; reenvio após ajuste; aprovação automática após 2 dias úteis,
-  marcada na auditoria e na fila para revisão posterior, com repasse retido até
-  a revisão (reprovado → suspensão e estorno); suspensão pelo Cotea. Home, API
-  pública e detalhe listam só grupos públicos aprovados e não
-  cancelados/suspensos. O cliente não define `status`. Grupos de organização
-  não passam por aprovação (ver V2-18). Fonte: RN:255-268, 288-311, 370-449.
-  Evidência: a criação aceita `status = 'ativo'` do body
-  (`pages/api/grupos/index.js:61,115`) e a listagem não filtra status
-  (`pages/api/grupos/index.js:18-51`). Depende de V2-01 e V2-11.
+- **V2-05** — especificada em `sdd/specs/005-aprovacao-grupos/spec.md` (ver
+  `## Features`). Decisão da entrevista: **não existe estado suspenso** (grupo
+  é mantido ou cancelado; "suspensão pelo Cotea" vira cancelamento pelo Cotea)
+  e a rejeição é definitiva. V2-14 e V2-15 devem ser revistas com isso.
 
 - **V2-06 · P0 · Checkout v2 com caução e elegibilidade no servidor** — Antes de
   pagar: mensalidade, caução de 1 mensalidade (ambas com 5%), taxa do meio de
@@ -120,6 +112,10 @@ notificações, conta e auditoria (V2-22 a V2-26).
   949, 1093. Evidência: não há entidade nem rotina de repasse em `lib/`,
   `pages/api/` ou `database/`; o pagamento só debita a carteira do membro
   (`pages/api/assinaturas/pay.js:99-107`). Depende de V2-01, V2-02 e V2-09.
+  **Interface da 005 (2026-11-26)**: a retenção estendida deve ler
+  `grupos.moderacao.revisaoPendente === true` (grupo aprovado automaticamente
+  e ainda não revisado); `moderacao.revisao.resultado` diz se a revisão
+  confirmou ou reprovou (reprovado = grupo `cancelado`).
 
 - **V2-12 · P1 · Cancelamento antes do acesso com estorno integral** — Com
   `aguardandoEnvioAcesso: true`, mostrar estorno integral; confirmar retira a
@@ -139,14 +135,22 @@ notificações, conta e auditoria (V2-22 a V2-26).
   Evidência: `PUT` grava preço, capacidade e `status` direto
   (`pages/api/grupos/[id].js:83-152`). Depende de V2-03 e V2-09.
 
-- **V2-14 · P1 · Encerramento direto do grupo e suspensão pelo Cotea** — Dono
+- **V2-14 · P1 · Encerramento direto do grupo e cancelamento pelo Cotea** — Dono
   encerra sem aprovação nem aviso prévio, com motivo obrigatório; prévia do
   impacto por membro; reembolso proporcional automático
   (`mensalidade / dias do ciclo × dias não utilizados`, taxa de 5% devolvida
   proporcionalmente), caução devolvida e valor proporcional aos dias usados ao
   dono; cancelamento lógico com auditoria, sem remoção física; notificação e
-  encerramento de acessos. Admin do sistema suspende grupos (fraude, denúncia,
-  revisão reprovada). Falha ao remover imagem do R2 deve ser registrada.
+  encerramento de acessos. Admin do sistema cancela grupos (fraude, denúncia,
+  revisão reprovada) — não existe suspensão (decisão da 005). Falha ao remover
+  imagem do R2 deve ser registrada.
+  **Parcial (005-aprovacao-grupos, 2026-11-26)**: o cancelamento lógico já
+  existe pelas ações `encerrar` (dono, grupo `ativo`, motivo opcional) e
+  `cancelar` (Cotea, motivo obrigatório), com auditoria e notificação, sem
+  estorno; o `PUT` não aceita mais `status`; o `DELETE` físico só vale em grupo
+  `ativo`. Restam: motivo obrigatório do dono, prévia de impacto, reembolso
+  proporcional, devolução de caução, encerramento de acessos, remover o `DELETE`
+  físico e registrar a falha do R2.
   Fonte: RN:702-740, 262, 782, 1030-1033. Evidência: `DELETE` remove grupo e
   membros fisicamente (`pages/api/grupos/[id].js:55-80`), o `PUT` aceita
   `status` livre (`:90,143`) e a falha do R2 vira só `console.warn` (`:67-69`).
@@ -159,7 +163,7 @@ notificações, conta e auditoria (V2-22 a V2-26).
   evidências; participação `em_disputa` e bloqueio automático do recebível;
   dono tem 3 dias para responder; suporte investiga e registra recomendação;
   admin do sistema decide (improcedente, parcial, integral, risco alto com
-  suspensão) e executa o estorno em até 7 dias; o Cotea julga também as de
+  cancelamento do grupo pelo Cotea — não existe suspensão, ver 005) e executa o estorno em até 7 dias; o Cotea julga também as de
   organização. Encerramento pelo dono não gera disputa. Fonte: RN:742-788,
   231, 215. Evidência: não há rotas, telas nem coleções de reclamação/disputa.
   Depende de V2-01, V2-02 e V2-11.
@@ -293,7 +297,8 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 - Calendário de feriados para "dias úteis" (aprovação automática e saque) —
   decidir em V2-01.
 - O que "membros ativos são tratados pelo suporte" significa financeiramente
-  quando o grupo é suspenso (RN:262, 440).
+  quando o grupo é cancelado pelo Cotea (antes "suspenso"; RN estados de grupo e
+  Fluxo 5). A 005 só avisa os membros; o estorno automático fica para V2-14/V2-15.
 - Corrigir a descrição do comportamento atual em RN:631-634: o `DELETE` apaga o
   documento do membro, não o marca como `banido`
   (`pages/api/grupos/[id]/join.js:56`).
@@ -349,6 +354,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
 | 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Convergida | 62/62 tasks | 2026-11-25 |
+| 005-aprovacao-grupos | Aprovação, moderação e visibilidade de grupos públicos | Em Execução | 66/67 tasks | 2026-11-26 |
 
 ## Melhorias Ad-hoc
 
@@ -373,3 +379,4 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | b09-setup-indexes-conflito | setup-indexes.js conflita com setupDatabase.js (IndexKeySpecsConflict) | Test | verified | Concluído | 2026-11-24 |
 | pay-aceita-fatura-estornada | `pay` aceita invoiceId de fatura estornada | Test | verified | Concluído | 2026-11-25 |
 | join-reusa-fatura-vinculada | join reusa fatura paga ja vinculada | Test | verified | Concluído | 2026-11-25 |
+| ssr-grupo-detalhe-expoe-dados-internos | SSR de /grupos/[id] expõe dados internos e e-mails a qualquer visitante | Test | verified | Concluído | 2026-11-26 |

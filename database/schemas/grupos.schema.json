@@ -27,7 +27,10 @@
     "confiabilidade": { "bsonType": "string" },
     "categoria": { "bsonType": "string" },
     "tipoGrupo": { "bsonType": "string" },
-    "status": { "bsonType": "string" },
+    "status": {
+      "bsonType": "string",
+      "description": "Estado de moderação (005-aprovacao-grupos): em_aprovacao | ajustes | rejeitado | ativo (aprovado e público) | cancelado. Ausente = ativo (legado)."
+    },
     "statusDetalhado": { "bsonType": "string" },
     "beneficios": {
       "bsonType": "array",
@@ -73,6 +76,66 @@
         "avatar": { "bsonType": "string" }
       }
     },
-    "participantesIds": { "bsonType": "array" }
+    "participantesIds": { "bsonType": "array" },
+    "moderacao": {
+      "bsonType": "object",
+      "description": "Moderação do grupo (005-aprovacao-grupos, data-model.md). Atualizar só por caminho pontuado via lib/moderacao-servidor.js.",
+      "properties": {
+        "envio": { "bsonType": "number", "description": "Nº do envio atual (1 na criação, +1 por reenvio, 0 = legado migrado)" },
+        "enviadoEm": { "bsonType": ["date", "null"], "description": "Instante do envio atual; base do prazo de 2 dias úteis" },
+        "revisaoPendente": { "bsonType": "bool", "description": "true após aprovação automática até a revisão; V2-11 retém o repasse enquanto true" },
+        "aprovacao": {
+          "bsonType": ["object", "null"],
+          "properties": {
+            "tipo": { "bsonType": "string", "description": "manual | automatica | legado" },
+            "em": { "bsonType": "date" },
+            "porId": { "bsonType": ["string", "null"] }
+          }
+        },
+        "revisao": {
+          "bsonType": ["object", "null"],
+          "properties": {
+            "porId": { "bsonType": ["string", "null"] },
+            "em": { "bsonType": "date" },
+            "resultado": { "bsonType": "string", "description": "confirmada | reprovada" }
+          }
+        },
+        "ultimaDecisao": {
+          "bsonType": ["object", "null"],
+          "properties": {
+            "acao": { "bsonType": "string" },
+            "texto": { "bsonType": ["string", "null"] },
+            "porId": { "bsonType": ["string", "null"] },
+            "em": { "bsonType": "date" }
+          }
+        },
+        "cancelamento": {
+          "bsonType": ["object", "null"],
+          "properties": {
+            "origem": { "bsonType": "string", "description": "dono | cotea" },
+            "motivo": { "bsonType": ["string", "null"] },
+            "porId": { "bsonType": ["string", "null"] },
+            "em": { "bsonType": "date" }
+          }
+        },
+        "historico": {
+          "bsonType": "array",
+          "description": "Append-only, no máximo 100 eventos ($slice: -100)",
+          "items": {
+            "bsonType": "object",
+            "properties": {
+              "acao": { "bsonType": "string" },
+              "de": { "bsonType": ["string", "null"] },
+              "para": { "bsonType": "string" },
+              "texto": { "bsonType": ["string", "null"] },
+              "porId": { "bsonType": ["string", "null"] },
+              "automatico": { "bsonType": "bool" },
+              "envio": { "bsonType": "number" },
+              "em": { "bsonType": "date" }
+            }
+          }
+        }
+      }
+    }
   }
 }

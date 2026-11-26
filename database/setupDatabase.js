@@ -51,6 +51,8 @@ async function run() {
     await db.collection("grupos").createIndex({ adminId: 1 });
     await db.collection("grupos").createIndex({ status: 1 });
     await db.collection("grupos").createIndex({ categoria: 1, status: 1 });
+    // fila de moderação e rotina de aprovação automática (005-aprovacao-grupos)
+    await db.collection("grupos").createIndex({ status: 1, "moderacao.enviadoEm": 1 });
 
     // 2) Users
     const usersSchema = await loadSchema("users.schema.json");
