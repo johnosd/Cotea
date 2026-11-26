@@ -7,6 +7,8 @@ import { getSessionUserId } from '../../../lib/wallet';
 import { logAudit } from '../../../lib/audit';
 import { montarRespostaGrupo } from '../../../lib/grupo-publico';
 import { identificarVisaoGrupo } from '../../../lib/grupo-visao-servidor';
+import { aposLotar, liquidarParticipacoesDoGrupo } from '../../../lib/checkout-servidor';
+import { grupoJaLotou } from '../../../lib/checkout';
 import {
   CODIGOS_MODERACAO, adminPodeEditar, donoPodeEditar, grupoEhPublico, podeVerGrupo, statusEfetivo,
 } from '../../../lib/moderacao';
@@ -89,12 +91,30 @@ async function handleDelete(grupoId, grupo, requesterId, session, req, db, res) 
   // `desistir`; rejeitado/cancelado preservam o histórico.
   if (statusEfetivo(grupo) !== 'ativo') return res.status(409).json(edicaoBloqueada(grupo));
 
+  // 006-checkout-caucao (logic §7). Depois de excluído não há como saber que o grupo
+  // lotou: marca antes as mensalidades que já não voltam.
+  if (grupoJaLotou(grupo)) {
+    await db.collection('membrosGrupo').updateMany(
+      { grupoId, 'retencao.situacao': 'retida' },
+      { $set: { 'retencao.situacao': 'a_liberar' } }
+    );
+  }
+
   const resultado = await db.collection('grupos').deleteOne({
     _id: grupoId, status: grupo.status === undefined ? { $exists: false } : grupo.status,
   });
   if (resultado.deletedCount === 0) return res.status(404).json({ error: 'Grupo nao encontrado' });
 
-  await db.collection('membrosGrupo').deleteMany({ grupoId });
+  // Sem o grupo, nenhuma entrada passa. Quem tem caução é liquidado e removido; o que não
+  // terminar fica órfão e a rotina `liquidacao-participacoes` completa.
+  try {
+    await liquidarParticipacoesDoGrupo({
+      db, grupoId, motivo: 'grupo_excluido', porId: String(requesterId), remover: true,
+    });
+  } catch (erro) {
+    console.error('Falha ao devolver caucoes do grupo excluido:', erro?.message || erro);
+  }
+  await db.collection('membrosGrupo').deleteMany({ grupoId, 'caucao.situacao': { $ne: 'bloqueada' } });
 
   if (hasR2Config()) {
     const safeKeyFromUrl = (url) => {
@@ -179,10 +199,21 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
   const vagasDisponiveisNumero = Math.max(preco.capacidade - capacidadeOk.participantes, 0);
   const camposPreco = camposPrecoParaGravar(preco);
 
+  // 006-checkout-caucao (FR-026): reduzir a capacidade pode lotar um grupo `apos_completar`.
+  const agora = new Date();
+  const lotaAgora = acessoEfetivo === 'apos_completar' && !grupoJaLotou(grupo)
+    && preco.capacidade <= capacidadeOk.participantes;
+
   // Status no filtro: se uma decisao de moderacao mudou o grupo entre a leitura e a gravacao,
   // a edicao nao se aplica sobre o estado novo (R-006).
+  // versaoParticipacao no filtro (D-13): se alguém entrou ou saiu depois da leitura, a
+  // contagem de participantes envelheceu e a edição não se aplica.
   const resultado = await db.collection('grupos').updateOne(
-    { _id: grupoId, status: grupo.status === undefined ? { $exists: false } : grupo.status },
+    {
+      _id: grupoId,
+      status: grupo.status === undefined ? { $exists: false } : grupo.status,
+      versaoParticipacao: grupo.versaoParticipacao === undefined ? { $exists: false } : grupo.versaoParticipacao,
+    },
     {
       $set: {
         nome, slug: slugify(nome), capa: imagemFinal, imageUrl: imageUrl || imagemFinal, imageKey,
@@ -195,7 +226,8 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
         observacoesInternas: observacoesInternasEfetiva,
         beneficios: beneficiosParsed, regras: regrasParsed, faq: faqParsed,
         fidelidade: parseFidelidade({ fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes }),
-        linkOficial: (linkOficial || '').trim(), updatedAt: new Date(),
+        linkOficial: (linkOficial || '').trim(), updatedAt: agora,
+        ...(lotaAgora ? { lotadoEm: agora, statusDetalhado: 'ativo' } : {}),
       },
     }
   );
@@ -205,6 +237,8 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
       error: 'O grupo mudou de estado enquanto voce editava. Atualize a pagina.', codigo: CODIGOS_MODERACAO.CONFLITO,
     });
   }
+
+  if (lotaAgora) await aposLotar({ db, grupo: { ...grupo, nome } });
 
   await logAudit({
     action: 'grupo.updated', actorId: String(requesterId), actorEmail: session.user.email,

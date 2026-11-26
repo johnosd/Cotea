@@ -276,7 +276,7 @@ Atual:
 - `papel`: `admin` ou `membro`.
 - `status`: normalmente `ativo` ou `banido`.
 - `aguardandoEnvioAcesso`: marca se dono ainda precisa enviar acesso.
-- `temCaucao`: existe no schema, mas nao esta integrado ao checkout.
+- Implementado (006-checkout-caucao): a entrada grava `temCaucao`, `caucao` (valor e situacao), `retencao` (so em grupo `apos_completar` nao lotado), `vinculo`, `aceiteRegras` e a fidelidade do momento. Na saida o documento do membro e apagado; o historico fica na fatura de entrada.
 
 Alvo v2:
 
@@ -505,24 +505,18 @@ Pre-condicoes:
 - Cadastro financeiro completo na hora do primeiro pagamento.
 - Usuario ainda nao e membro ativo.
 
-Fluxo atual observado:
+Fluxo atual (feature 006-checkout-caucao):
 
 1. Usuario abre detalhe do grupo.
 2. Se nao autenticado, sistema envia para login.
 3. Usuario clica em assinar.
-4. Sistema abre etapa de relacionamento.
-5. Usuario confirma regra de relacionamento.
-6. Sistema abre pagamento.
-7. Sistema consulta saldo da carteira.
-8. Usuario escolhe saldo ou PIX.
-9. Sistema cria ou paga fatura de assinatura.
-10. Se saldo for insuficiente, fatura fica `aguardando_recarga`.
-11. Se usuario escolhe PIX, sistema cria pagamento simulado, confirma e credita saldo.
-12. Sistema tenta pagar fatura novamente.
-13. Com fatura paga, sistema chama entrada no grupo.
-14. Sistema cria membro ativo com `aguardandoEnvioAcesso: true`.
-15. Sistema notifica dono para enviar acesso.
-16. Usuario vai para tela de sucesso.
+4. Sistema abre a etapa de relacionamento: o usuario declara o vinculo com o dono (amigo, familia, conhecido ou desconhecido; nenhum pre-selecionado).
+5. Sistema abre o pagamento com o resumo calculado no servidor: mensalidade, caucao, taxa (se houver), total, parte do saldo, parte no PIX, regra do vencimento, prazo de acesso, fidelidade, aviso de grupo `apos_completar` e regras da caucao.
+6. Usuario aceita as regras da caucao (data e versao registradas) e confirma.
+7. O saldo e usado primeiro; o PIX cobre so a diferenca e entra no saldo antes da cobranca.
+8. Numa unica operacao o sistema confere elegibilidade, debita o total, bloqueia a caucao (e retem a mensalidade quando for o caso), cria o membro com `aguardandoEnvioAcesso: true` e emite a fatura paga. Se algo mudou desde o resumo, nada e cobrado.
+9. Sistema notifica dono e membro; se o grupo lotou, libera as mensalidades retidas e avisa todos.
+10. Usuario vai para tela de sucesso.
 
 Alvo v2:
 
@@ -538,23 +532,27 @@ Alvo v2:
 4. Se o grupo for `apos_completar`, o membro **paga na entrada** e o valor fica retido. O membro aguarda ativacao/acesso ate completar as vagas. Se o grupo nao completar em **30 dias**, o sistema estorna integralmente e automaticamente todos os membros e o grupo e encerrado.
 5. Em grupo de organizacao, so entra quem pertence a organizacao.
 6. Na etapa de **relacionamento**, antes do pagamento, o membro declara seu vinculo com o dono do grupo: amigo, familia, conhecido ou desconhecido. A declaracao e registrada na participacao.
-7. Se a entrada falhar depois do pagamento, sistema deve estornar automaticamente.
+7. Cobranca e entrada sao uma unica operacao: nao existe "pago sem participacao". Repetir a mesma confirmacao nao cobra de novo.
 8. Se o grupo completar a capacidade, sistema atualiza status e notifica dono e membros.
 9. Usuario com a trava de saldo apos remocao de organizacao (ver "Contextos") nao pode entrar em nenhum grupo.
 
 Excecoes:
 
 - Grupo completo e sem saida agendada (sem vaga futura): bloquear entrada antes de pagamento.
-- Fatura paga mas entrada falhou: estorno automatico.
+- Entrada impossivel: nada e cobrado; um PIX ja creditado permanece no saldo disponivel.
 - Usuario ja membro: nao duplicar membro nem cobrar novamente.
 - Usuario bloqueado: pode pagar e entrar como membro (ver estado "Bloqueado" do usuario); so nao cria grupos.
 - Conta nao validada: redirecionar para verificacao.
 
 Gap de implementacao:
 
-- O checkout atual cobra apenas o valor da vaga retornado pelo grupo, apesar de a UI mencionar mensalidade + caucao.
-- `temCaucao` existe, mas a caucao nao e cobrada, bloqueada e liquidada de ponta a ponta.
-- Fila de espera ainda nao e fluxo completo.
+- Resolvido (feature 006): mensalidade + caucao cobradas, bloqueadas e devolvidas de ponta a ponta, com elegibilidade no servidor.
+- Regras da 006:
+  - **Data-base do ciclo**: mensal, contado do envio do acesso; o proximo vencimento e no mesmo dia do mes seguinte (se o dia nao existir, no ultimo dia do mes), horario de Brasilia.
+  - **Taxa do meio de pagamento**: R$ 0,00 enquanto o PIX for simulado (a taxa fixa de R$ 0,68 foi removida; ela era creditada no saldo do proprio usuario).
+  - **Devolucao transitoria**: ate existirem cancelamento agendado, multa e inadimplencia (V2-09/V2-10), a caucao volta integralmente em toda saida.
+  - **Grupo `apos_completar`**: a mensalidade fica retida ate o grupo lotar ou o membro receber o acesso; se a participacao terminar antes, tudo o que foi pago volta. Depois de lotar uma vez, novas entradas nao tem retencao.
+- Pendente: estorno automatico apos 30 dias sem lotar (V2-07), fila de espera (V2-16), organizacoes e trava de saldo (V2-19 a V2-21).
 
 ## Fluxo 8: envio de acesso pelo dono do grupo
 
@@ -640,10 +638,10 @@ Pre-condicoes:
 
 Atual:
 
-- Tela confirma cancelamento.
-- API remove participacao imediatamente marcando membro como `banido`.
-- Dono recebe notificacao.
-- Nao ha calculo automatico de caucao, ciclo ou reembolso.
+- Tela mostra o que volta para o saldo e confirma o cancelamento.
+- API apaga a participacao imediatamente e devolve a caucao na mesma operacao (feature 006); em grupo `apos_completar` nao lotado, devolve tambem a mensalidade retida.
+- Membro e dono recebem notificacao.
+- Nao ha calculo de ciclo, multa de fidelidade nem uso da caucao no ultimo ciclo.
 
 Alvo v2:
 
@@ -681,8 +679,8 @@ Regra alvo da janela:
 
 Gap de implementacao:
 
-- Cancelamento atual e imediato.
-- Nao ha agendamento, reversao, liquidacao de caucao ou reposicao automatica.
+- Cancelamento atual e imediato, com devolucao integral da caucao (regra transitoria da 006).
+- Nao ha agendamento, reversao, multa, uso da caucao no ultimo ciclo ou reposicao automatica (V2-10).
 
 ## Fluxo 12: cancelamento antes de receber acesso
 
@@ -709,7 +707,7 @@ Regra:
 
 Gap de implementacao:
 
-- O estorno automatico so existe para falha tecnica na entrada apos pagamento, nao para cancelamento manual antes do acesso.
+- Parcial (feature 006): quem sai de grupo `apos_completar` ainda nao lotado recebe tudo de volta. Nos demais grupos, antes do acesso, so a caucao volta; o estorno da mensalidade fica para a V2-12.
 
 ## Fluxo 13: cancelamento ou encerramento do grupo
 
@@ -749,7 +747,8 @@ Regras:
 Gap de implementacao:
 
 - Hoje existe exclusao fisica em endpoint `DELETE`.
-- Nao ha calculo proporcional de reembolso nem processamento automatico de caucao no encerramento.
+- Implementado (feature 006): no encerramento, no cancelamento pelo Cotea e na exclusao, a caucao (e a mensalidade retida de grupo nao lotado) volta a cada membro, em ate 1 hora (rotina `liquidacao-participacoes`).
+- Nao ha calculo proporcional de reembolso (V2-14).
 
 ## Fluxo 14: reclamacao e disputa
 
@@ -829,6 +828,7 @@ Alvo v2:
 
 - Quando usar gateway real, confirmacao deve vir por webhook e nao por botao manual.
 - A taxa do provedor (Mercado Pago) e repassada ao usuario e deve ser exibida antes da criacao do pagamento.
+- Enquanto o PIX for simulado a taxa e R$ 0,00; no checkout o PIX cobre so a diferenca entre o total e o saldo (feature 006).
 
 ## Fluxo 16: carteira - usar saldo
 
@@ -860,7 +860,7 @@ Regras:
 Atual:
 
 - `invoices` representa fatura de assinatura.
-- Status conhecidos: `aguardando_pagamento`, `aguardando_recarga`, `paga`, `estornada`.
+- Status conhecidos: `paga`, `estornada`, `cancelada`. A fatura de entrada (feature 006) nasce paga, com mensalidade (repasse + taxa), caucao e taxa do meio de pagamento; `aguardando_pagamento` e `aguardando_recarga` nao sao mais produzidos.
 - `payments` representa pagamento PIX simulado.
 - Tela "Faturas / Pagamentos" lista `payments`, nao todas as `invoices`.
 
@@ -942,7 +942,7 @@ Gap de implementacao:
 
 - Nao ha fluxo de recebiveis/repasse ao dono implementado: as categorias `recebivel_retido` e `disputa` e a movimentacao entre categorias (`mover`, mantendo grupo e participacao) ja existem (feature 002), mas nenhum fluxo gera recebiveis ainda (V2-11/V2-15).
 - Recebivel liberado vira saldo `pessoal` comum (pode pagar grupos ou ser sacado).
-- A conta da plataforma (`wallets._id = 'plataforma'`, categoria `receita_taxa`) existe e comeca vazia; nenhum fluxo grava taxa do Cotea ainda (V2-06/V2-11). A taxa de cada mensalidade ja fica registrada na composicao da fatura (feature 003).
+- A conta da plataforma (`wallets._id = 'plataforma'`, categoria `receita_taxa`) existe e comeca vazia; nenhum fluxo grava taxa do Cotea ainda (V2-11). A taxa de cada mensalidade ja fica registrada na composicao da fatura (feature 003).
 
 ## Fluxo 20: fila de espera
 
@@ -1109,12 +1109,14 @@ automatica, saque, disputas, faturas, convites, repasse e grupos
 - Valores monetarios devem ser normalizados para duas casas decimais.
 - A taxa do Cotea e de **5%**, somada ao valor do membro, igual no publico e no corporativo. Valor mensal do membro: `(T / C) x 1,05`.
 - O dono ocupa 1 vaga e paga `T / C`, sem taxa do Cotea. Essa parte e informativa: o sistema nao cobra o dono.
-- Cada fatura de mensalidade guarda a composicao congelada na emissao: repasse ao dono + taxa do Cotea (feature 003). O lancamento da taxa na conta da plataforma e do repasse ao dono fica para V2-06/V2-11.
+- Cada fatura de mensalidade guarda a composicao congelada na emissao: repasse ao dono + taxa do Cotea (feature 003). O lancamento da taxa na conta da plataforma e do repasse ao dono fica para a V2-11.
 - Faturas ja emitidas nao mudam quando o preco do grupo muda: sao cobradas pelo proprio valor.
 - O primeiro pagamento de entrada no grupo no alvo v2 e:
   - mensalidade do ciclo atual (com taxa do Cotea);
   - caucao de 1 mensalidade;
-  - taxa do meio de pagamento, se aplicavel.
+  - taxa do meio de pagamento, se aplicavel (R$ 0,00 enquanto o PIX for simulado).
+- O ciclo mensal conta a partir do envio do acesso.
+- Regra transitoria (feature 006): a caucao volta integralmente em toda saida ate as regras de cancelamento e inadimplencia serem implementadas (V2-09/V2-10).
 - Deposito minimo: R$ 5,00. Saque minimo: R$ 5,00, somente para o CPF do proprio usuario, com aprovacao em ate 2 dias uteis.
 - As taxas do provedor de pagamento (Mercado Pago) sao **repassadas ao usuario**, no deposito e no saque. O Cotea nao absorve essas taxas e o valor aparece sempre antes da confirmacao.
 - Quem cancela antes da fidelidade perde a caucao como multa, em favor do dono, e continua pagando normalmente as faturas ate a saida efetiva, inclusive o ultimo ciclo.
@@ -1136,8 +1138,8 @@ automatica, saque, disputas, faturas, convites, repasse e grupos
 ## Gaps prioritarios para implementacao futura
 
 1. Criar status e fluxo real de aprovacao previa de grupos.
-2. Implementar caucao como lancamento financeiro separado e bloqueado.
-3. Ajustar checkout para cobrar mensalidade + caucao e mostrar total correto.
+2. Resolvido (feature 006): caucao como lancamento financeiro separado e bloqueado.
+3. Resolvido (feature 006): checkout cobra mensalidade + caucao e mostra o total correto.
 4. Implementar cancelamento agendado por ciclo com janela de 15 dias.
 5. Implementar reclamacoes/disputas com bloqueio de repasse.
 6. Implementar repasse ao dono com retencao de 30 dias.

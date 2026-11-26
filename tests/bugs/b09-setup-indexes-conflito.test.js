@@ -81,9 +81,10 @@ describe('b09: setup-indexes.js x setupDatabase.js', () => {
     expect(D.size).toBe(doBanco.length);
   });
 
-  it('o índice de idempotência por referenceId é único parcial nos dois', () => {
+  // 006-checkout-caucao (D-08): deixou de ser único; a idempotência é só por operacaoId.
+  it('o índice por referenceId é parcial e não único nos dois', () => {
     const chave = 'walletTransactions {"referenceId":1,"type":1,"source":1}';
-    const esperado = { unique: true, partialFilterExpression: { referenceId: { $type: 'string' } } };
+    const esperado = { unique: false, partialFilterExpression: { referenceId: { $type: 'string' } } };
     for (const lado of [S, D]) {
       expect(lado.get(chave)?.opcoes).toMatchObject(esperado);
     }

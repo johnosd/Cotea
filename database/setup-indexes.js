@@ -53,12 +53,13 @@ async function createIndexes() {
   // walletTransactions — suporta cálculo de saldo em calculateBalances
   await db.collection('walletTransactions').createIndex({ walletId: 1, type: 1, status: 1 });
 
-  // walletTransactions — suporta busca de idempotência por referenceId+source.
-  // Definição IDÊNTICA à de setupDatabase.js (fonte de verdade): único parcial. Com opções
-  // diferentes o MongoDB aborta com IndexKeySpecsConflict (B-09).
+  // walletTransactions — busca por referência. Definição IDÊNTICA à de setupDatabase.js (fonte
+  // de verdade): parcial e NÃO único (006, D-08 — várias pernas por referência; a idempotência
+  // é por operacaoId). Com opções diferentes o MongoDB aborta com IndexKeySpecsConflict (B-09);
+  // banco antigo: rodar scripts/migrar-checkout-v2.js --aplicar antes.
   await db.collection('walletTransactions').createIndex(
     { referenceId: 1, type: 1, source: 1 },
-    { unique: true, partialFilterExpression: { referenceId: { $type: 'string' } } }
+    { partialFilterExpression: { referenceId: { $type: 'string' } } }
   );
 
   // walletTransactions — idempotência por operação do ledger segmentado (002, D-05)

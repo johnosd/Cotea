@@ -305,9 +305,6 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 - O que "membros ativos são tratados pelo suporte" significa financeiramente
   quando o grupo é cancelado pelo Cotea (antes "suspenso"; RN estados de grupo e
   Fluxo 5). A 005 só avisa os membros; o estorno automático fica para V2-14/V2-15.
-- Corrigir a descrição do comportamento atual em RN:631-634: o `DELETE` apaga o
-  documento do membro, não o marca como `banido`
-  (`pages/api/grupos/[id]/join.js:56`).
 - Grupo "pré-aprovado" (RN:443-445) e gateway PIX real com webhook (RN:817-819)
   são possibilidades futuras, não features v2 confirmadas.
 - Índice único `walletTransactions { referenceId, type, source }` (parcial, em
@@ -361,7 +358,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
 | 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Convergida | 62/62 tasks | 2026-11-25 |
 | 005-aprovacao-grupos | Aprovação, moderação e visibilidade de grupos públicos | Convergida | 69/69 tasks | 2026-11-26 |
-| 006-checkout-caucao | Checkout v2 com caução e elegibilidade no servidor | Especificada | N/A | 2026-11-26 |
+| 006-checkout-caucao | Checkout v2 com caução e elegibilidade no servidor | Em Execução | 53/54 tasks | 2026-11-26 |
 
 ## Melhorias Ad-hoc
 

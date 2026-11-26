@@ -9,7 +9,37 @@
       "bsonType": "object",
       "properties": {
         "repasseDono": { "bsonType": "number" },
-        "taxaCotea": { "bsonType": "number" }
+        "taxaCotea": { "bsonType": "number" },
+        "caucao": { "bsonType": "number" },
+        "taxaPagamento": { "bsonType": "number" }
+      }
+    },
+    "entrada": {
+      "bsonType": "object",
+      "description": "Fatura de entrada em grupo (006-checkout-caucao): registro histórico da participação.",
+      "properties": {
+        "chave": { "bsonType": "string" },
+        "participacaoId": { "bsonType": "string" },
+        "mensalidade": { "bsonType": "number" },
+        "caucao": { "bsonType": "number" },
+        "taxaPagamento": { "bsonType": "number" },
+        "retida": { "bsonType": "bool" },
+        "fidelidadeMeses": { "bsonType": "number" },
+        "vinculo": { "bsonType": "string" },
+        "aceite": {
+          "bsonType": "object",
+          "properties": { "versao": { "bsonType": "string" }, "em": { "bsonType": "date" } }
+        }
+      }
+    },
+    "encerramento": {
+      "bsonType": "object",
+      "properties": {
+        "em": { "bsonType": "date" },
+        "motivo": { "bsonType": "string" },
+        "porId": { "bsonType": ["string", "null"] },
+        "caucaoDevolvida": { "bsonType": "number" },
+        "mensalidadeDevolvida": { "bsonType": "number" }
       }
     },
     "status": { "bsonType": "string" },

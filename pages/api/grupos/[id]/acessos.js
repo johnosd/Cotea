@@ -6,6 +6,7 @@ import { authOptions } from '../../auth/[...nextauth]';
 import { isValidEmail } from '../../../../lib/validation';
 import { getSessionUserId } from '../../../../lib/wallet';
 import { parseObjectId } from '../../../../lib/grupos-utils';
+import { liberarRetencoes } from '../../../../lib/checkout-servidor';
 
 const buildTransporter = () =>
   nodemailer.createTransport({
@@ -144,6 +145,13 @@ export default async function handler(req, res) {
           $set: { aguardandoEnvioAcesso: false, dataEnvioAcesso: agora },
         }
       );
+      // 006-checkout-caucao (FR-026): quem recebeu o acesso deixa de ter mensalidade retida.
+      // O envio já vale; o que não terminar aqui, a rotina completa.
+      try {
+        await liberarRetencoes({ db, grupoId });
+      } catch (erro) {
+        console.error('Falha ao liberar mensalidades apos o envio de acesso:', erro?.message || erro);
+      }
     }
 
     await db.collection('mensagens').insertOne({

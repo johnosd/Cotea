@@ -1,4 +1,8 @@
-import { useMemo, useState, useEffect } from 'react';
+// Checkout v2 (006-checkout-caucao): mostra o resumo calculado no servidor, exige o aceite
+// das regras da caução e confirma a entrada. Saldo primeiro; o Pix cobre só a diferença.
+// A tela não calcula nem envia valores para cobrança. Ver
+// sdd/specs/006-checkout-caucao/contracts/api-entrada.md ("Telas").
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
@@ -6,383 +10,285 @@ import Header from '../../components/Header';
 import FlowStepper from '../../components/FlowStepper';
 import { NOTA_TAXA_COTEA } from '../../components/PrevisaoPreco';
 import CadastroFinanceiroForm, { ehCadastroIncompleto } from '../../components/CadastroFinanceiroForm';
-import { precoDoGrupo } from '../../lib/preco';
+import { VINCULOS, rotuloVinculo } from '../../lib/checkout';
+
+const primeiro = (valor) => (Array.isArray(valor) ? valor[0] : valor) || '';
+const reais = (valor) => `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
+
+// Chave de idempotência da confirmação: repetir o mesmo pedido não cobra de novo.
+const novaChave = () => (typeof window !== 'undefined' && window.crypto?.randomUUID
+  ? window.crypto.randomUUID()
+  : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
+
+const AVISO_PIX_NO_SALDO = 'O valor do Pix está no seu saldo.';
 
 export default function Pagamento() {
   const router = useRouter();
-  const { data: session, status: sessionStatus } = useSession();
-  // O preco NAO vem da URL: e lido do grupo no servidor (003-preco-por-vaga, D-09).
-  const { grupoId, nome } = router.query;
-  const [metodo, setMetodo] = useState('saldo');
-  const [mostrarCupom, setMostrarCupom] = useState(false);
-  const [saldo, setSaldo] = useState(null);
-  const [saldoErro, setSaldoErro] = useState('');
-  const [saldoCarregando, setSaldoCarregando] = useState(false);
+  const { status: sessionStatus } = useSession();
+  const grupoId = primeiro(router.query.grupoId);
+  const nome = primeiro(router.query.nome);
+  const vinculo = primeiro(router.query.vinculo);
+  const vinculoValido = VINCULOS.some((v) => v.id === vinculo);
+
+  const [grupoNome, setGrupoNome] = useState('');
+  const [resumo, setResumo] = useState(null);
+  const [recusa, setRecusa] = useState(null); // motivo que impede a entrada
+  const [carregando, setCarregando] = useState(true);
+  const [aceito, setAceito] = useState(false);
   const [processando, setProcessando] = useState(false);
-  const [erroPagamento, setErroPagamento] = useState('');
+  const [erro, setErro] = useState('');
   const [mensagem, setMensagem] = useState('');
-  const [invoiceId, setInvoiceId] = useState('');
   // 004-cadastro-financeiro (US3): pendências devolvidas por pay/pix abrem o formulário embutido.
   const [pendenciasCadastro, setPendenciasCadastro] = useState(null);
-  const [grupo, setGrupo] = useState(null);
-  const [grupoCarregando, setGrupoCarregando] = useState(true);
-  const grupoNome = grupo?.nome || nome || 'Grupo';
-  const precoGrupo = useMemo(() => precoDoGrupo(grupo), [grupo]);
-  const precoNumero = precoGrupo.valido ? precoGrupo.valorPorVaga : 0;
-  const precoTexto = grupoCarregando
-    ? 'Carregando...'
-    : precoGrupo.valido
-    ? `R$ ${precoNumero.toFixed(2)}`
-    : 'Preco indisponivel';
-  const saldoFormatado = useMemo(() => {
-    if (saldo === null) return saldoCarregando ? 'Carregando...' : 'Indisponivel';
-    return `R$ ${saldo.toFixed(2)}`;
-  }, [saldo, saldoCarregando]);
-  const saldoSuficiente = saldo !== null ? saldo >= precoNumero : false;
-  const metodos = useMemo(
-    () => [
-      {
-        id: 'saldo',
-        titulo: 'Saldo disponivel',
-        valor: saldoFormatado,
-        badge: saldoCarregando ? 'Carregando...' : saldoSuficiente ? 'Sem taxas' : 'Saldo insuficiente',
-        taxa: 0,
-        disabled: !saldoSuficiente,
-      },
-      {
-        id: 'pix',
-        titulo: 'Pix - rapido e sem complicacoes',
-        valor: `R$ ${(precoNumero + 0.68).toFixed(2)}`,
-        badge: '+ R$ 0,68 (taxa)',
-        taxa: 0.68,
-        icon: 'fa-bolt',
-        disabled: false,
-      },
-    ],
-    [precoNumero, saldoFormatado, saldoCarregando, saldoSuficiente]
-  );
+  const chaveRef = useRef('');
 
-  const sessionUserId =
-    session?.user?.id || session?.user?._id || session?.user?.sub || session?.user?.userId || session?.user?.uid || '';
+  const voltarAoRelacionamento = useCallback(() => {
+    const query = new URLSearchParams();
+    if (grupoId) query.append('grupoId', grupoId);
+    if (nome) query.append('nome', nome);
+    router.replace(`/assinatura/relacionamento?${query.toString()}`);
+  }, [router, grupoId, nome]);
 
-  useEffect(() => {
-    if (metodo === 'saldo' && !saldoCarregando && !saldoSuficiente) {
-      setMetodo('pix');
+  const carregarResumo = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const res = await fetch(`/api/assinaturas/resumo?grupoId=${encodeURIComponent(grupoId)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResumo(null);
+        setRecusa({ codigo: data?.codigo, error: data?.error || 'Não foi possível carregar o resumo.' });
+        return;
+      }
+      setRecusa(null);
+      setGrupoNome(data.grupo?.nome || '');
+      setResumo(data.resumo);
+    } catch {
+      setRecusa({ error: 'Não foi possível carregar o resumo. Verifique sua conexão e recarregue a página.' });
+    } finally {
+      setCarregando(false);
     }
-  }, [metodo, saldoCarregando, saldoSuficiente]);
+  }, [grupoId]);
 
-  // Carrega o grupo (fonte do preco)
   useEffect(() => {
     if (!router.isReady) return;
     if (!grupoId) {
-      setGrupoCarregando(false);
+      setCarregando(false);
+      setRecusa({ error: 'Grupo não identificado. Volte e escolha o grupo novamente.' });
       return;
     }
-    let ativo = true;
-    const carregarGrupo = async () => {
-      setGrupoCarregando(true);
-      try {
-        const res = await fetch(`/api/grupos/${grupoId}`);
-        const data = await res.json();
-        if (ativo) setGrupo(res.ok ? data : null);
-      } catch {
-        if (ativo) setGrupo(null);
-      } finally {
-        if (ativo) setGrupoCarregando(false);
-      }
-    };
-    carregarGrupo();
-    return () => {
-      ativo = false;
-    };
-  }, [router.isReady, grupoId]);
-
-  // Carrega saldo real da carteira
-  useEffect(() => {
-    const carregarSaldo = async () => {
-      setSaldoCarregando(true);
-      setSaldoErro('');
-      try {
-        const res = await fetch('/api/wallet/balance');
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Erro ao carregar saldo');
-        const disponivel = Number(data?.available ?? data?.balance ?? 0);
-        setSaldo(Number.isFinite(disponivel) ? disponivel : 0);
-      } catch (error) {
-        setSaldoErro(error?.message || 'Erro ao carregar saldo');
-      } finally {
-        setSaldoCarregando(false);
-      }
-    };
-    if (session?.user) {
-      carregarSaldo();
+    if (!vinculoValido) {
+      voltarAoRelacionamento();
+      return;
     }
-  }, [session]);
+    if (sessionStatus === 'unauthenticated') {
+      router.push(`/auth/signin?callbackUrl=${encodeURIComponent(router.asPath || '/')}`);
+      return;
+    }
+    if (sessionStatus === 'authenticated') carregarResumo();
+    // `router` muda a cada navegação; o que importa aqui são os parâmetros.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, grupoId, vinculoValido, sessionStatus]);
 
-  // 004-cadastro-financeiro (FR-015): o Pix usa o CPF do cadastro; a tela não pede CPF.
-  const podeFinalizar = precoGrupo.valido;
-
-  // Erro de API preservando `codigo`/`estornada` para o tratamento abaixo.
-  const erroDaApi = (data, padrao) => {
-    const erro = new Error(data?.error || padrao);
-    erro.codigo = data?.codigo;
-    erro.estornada = data?.estornada === true;
-    erro.cadastroIncompleto = ehCadastroIncompleto(data);
-    erro.pendencias = data?.pendencias;
-    return erro;
-  };
-
-  // Codigos em que a fatura guardada nao serve mais: o proximo clique deve gerar outra.
-  const MENSAGENS_FATURA_INUTILIZAVEL = {
-    fatura_estornada: 'Este pagamento ja foi estornado para o seu saldo. Clique em "Finalizar pagamento" para gerar uma nova cobranca.',
-    fatura_ja_utilizada: 'Este pagamento ja foi usado em uma entrada anterior. Clique em "Finalizar pagamento" para fazer um novo pagamento.',
-  };
-
-  const pagarFaturaAssinatura = async (invoiceIdAtual) => {
-    const payload = {
-      grupoId,
-      ...(invoiceIdAtual ? { invoiceId: invoiceIdAtual } : {}),
-    };
-    const res = await fetch('/api/assinaturas/pay', {
+  const chamarApi = async (url, corpo) => {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(corpo),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      throw erroDaApi(data, 'Erro ao processar pagamento');
-    }
-    if (data?.invoiceId) setInvoiceId(data.invoiceId);
-    return data;
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
   };
 
-  const confirmarPix = async (valor) => {
-    const createRes = await fetch('/api/pix/simulated/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: valor }),
-    });
-    const createData = await createRes.json();
-    if (!createRes.ok) {
-      throw erroDaApi(createData, 'Erro ao gerar pagamento Pix');
-    }
-    const confirmRes = await fetch('/api/pix/simulated/confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentId: createData.paymentId }),
-    });
-    const confirmData = await confirmRes.json();
-    if (!confirmRes.ok) {
-      throw new Error(confirmData?.error || 'Erro ao creditar Pix');
-    }
-    return confirmData;
+  const confirmarEntrada = (base, saldoVisto) => chamarApi('/api/assinaturas/pay', {
+    grupoId,
+    chave: chaveRef.current,
+    vinculo,
+    aceiteRegras: { versao: base.regras.versao },
+    versaoResumo: base.versaoResumo,
+    saldoVisto,
+  });
+
+  /** Deposita a diferença no saldo (Pix simulado). Devolve o novo disponível. */
+  const pagarPix = async (valor) => {
+    const criado = await chamarApi('/api/pix/simulated/create', { amount: valor });
+    if (!criado.ok) return { ok: false, data: criado.data };
+    const confirmado = await chamarApi('/api/pix/simulated/confirm', { paymentId: criado.data.paymentId });
+    if (!confirmado.ok) return { ok: false, data: confirmado.data };
+    return { ok: true, disponivel: confirmado.data.available };
   };
 
-  const registrarEntradaNoGrupo = async (invoiceIdAtual) => {
-    const res = await fetch(`/api/grupos/${grupoId}/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invoiceId: invoiceIdAtual }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw erroDaApi(data, 'Erro ao registrar sua entrada no grupo');
+  const tratarRecusa = async (data, pixCreditado) => {
+    const complemento = pixCreditado ? ` ${AVISO_PIX_NO_SALDO}` : '';
+    if (ehCadastroIncompleto(data)) {
+      setPendenciasCadastro(data.pendencias);
+      return;
     }
-    return data;
+    if (data?.codigo === 'resumo_desatualizado' || data?.codigo === 'saldo_insuficiente') {
+      if (data.resumo?.regras?.versao !== resumo.regras.versao) setAceito(false);
+      if (data.resumo) setResumo(data.resumo);
+      setErro(`Os valores ou o seu saldo mudaram. Confira o resumo e confirme novamente.${complemento}`);
+      return;
+    }
+    if (data?.codigo === 'vinculo_invalido') {
+      voltarAoRelacionamento();
+      return;
+    }
+    // A chave não serve mais: a próxima confirmação é uma cobrança nova.
+    if (data?.codigo === 'confirmacao_ja_utilizada') chaveRef.current = '';
+    if (data?.codigo === 'aceite_obrigatorio') setAceito(false);
+    setErro(`${data?.error || 'Não foi possível concluir a entrada.'}${complemento}`);
+    await carregarResumo();
   };
 
   const handleFinalizar = async () => {
-    if (sessionStatus !== 'authenticated' || !sessionUserId) {
-      const callbackUrl = encodeURIComponent(router.asPath || router.pathname || '/');
-      router.push(`/auth/signin?callbackUrl=${callbackUrl}`);
+    if (!resumo || processando) return;
+    if (!aceito) {
+      setErro('Para continuar, aceite as regras da caução.');
       return;
     }
-    if (!grupoId) {
-      setErroPagamento('Grupo nao identificado. Volte e tente novamente.');
-      return;
-    }
-
-    setErroPagamento('');
+    setErro('');
     setMensagem('');
     setProcessando(true);
+    if (!chaveRef.current) chaveRef.current = novaChave();
 
-    let pagamento = null;
+    let pixCreditado = false;
     try {
-      pagamento = await pagarFaturaAssinatura(invoiceId || undefined);
+      let resposta = await confirmarEntrada(resumo, resumo.saldoDisponivel);
 
-      // Se saldo for insuficiente, direciona para Pix
-      if (pagamento.status === 'aguardando_recarga') {
-        setInvoiceId(pagamento.invoiceId);
-        if (metodo !== 'pix') {
-          setErroPagamento('Saldo insuficiente. Selecione Pix para recarregar e concluir o pagamento.');
-          setMetodo('pix');
-          setProcessando(false);
+      // O servidor confirmou que o resumo é o atual e falta saldo: Pix da diferença.
+      if (!resposta.ok && resposta.data?.codigo === 'saldo_insuficiente') {
+        const atual = resposta.data.resumo;
+        setResumo(atual);
+        setMensagem('Gerando o Pix e creditando no seu saldo...');
+        const pix = await pagarPix(atual.valorPix);
+        if (!pix.ok) {
+          await tratarRecusa(pix.data, false);
           return;
         }
-        const faltante = Number(pagamento.faltante || precoNumero);
-        const valorPix = (Number.isFinite(faltante) ? faltante : precoNumero) + 0.68;
-        setMensagem('Gerando Pix e creditando saldo...');
-        await confirmarPix(valorPix);
-        pagamento = await pagarFaturaAssinatura(pagamento.invoiceId);
+        pixCreditado = true;
+        setMensagem('Registrando sua entrada no grupo...');
+        resposta = await confirmarEntrada(atual, pix.disponivel);
       }
 
-      if (pagamento.status !== 'paga') {
-        throw new Error('Nao foi possivel concluir o pagamento. Tente novamente.');
+      if (!resposta.ok) {
+        await tratarRecusa(resposta.data, pixCreditado);
+        return;
       }
 
-      setMensagem('Registrando sua entrada no grupo...');
-      await registrarEntradaNoGrupo(pagamento.invoiceId);
-
-      const query = new URLSearchParams();
-      if (grupoId) query.append('grupoId', grupoId);
-      if (nome) query.append('nome', nome);
-      if (pagamento.invoiceId) query.append('invoiceId', pagamento.invoiceId);
-
-      router.push(`/assinatura/sucesso${query.toString() ? `?${query.toString()}` : ''}`);
-    } catch (error) {
-      // Cadastro financeiro incompleto (pay ou pix recusaram antes de cobrar):
-      // abre o formulário e, ao salvar, repete a mesma finalização.
-      if (error?.cadastroIncompleto) {
-        setPendenciasCadastro(error.pendencias);
-        return;
-      }
-      // Fatura estornada ou ja usada: descarta para o retry gerar uma nova.
-      const mensagemInutilizavel = MENSAGENS_FATURA_INUTILIZAVEL[error?.codigo];
-      if (mensagemInutilizavel) {
-        setInvoiceId('');
-        setErroPagamento(mensagemInutilizavel);
-        return;
-      }
-      // O join ja estornou no servidor (grupo indisponivel/cheio): nada a estornar aqui.
-      if (error?.estornada) {
-        setInvoiceId('');
-        setErroPagamento(`${error.message}. O pagamento foi estornado para o seu saldo.`);
-        return;
-      }
-      // Se pagamento concluiu mas join falhou, tenta estornar
-      if (pagamento?.status === 'paga' && pagamento?.invoiceId) {
-        try {
-          const refundRes = await fetch('/api/assinaturas/refund', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ invoiceId: pagamento.invoiceId }),
-          });
-          if (!refundRes.ok) {
-            const data = await refundRes.json();
-            throw new Error(data?.error || 'Erro ao estornar pagamento');
-          }
-          setInvoiceId('');
-          setErroPagamento('Pagamento estornado porque nao foi possivel registrar sua entrada. Nenhum valor foi cobrado.');
-        } catch (refundErr) {
-          setErroPagamento(refundErr?.message || 'Pagamento feito, mas nao foi possivel registrar entrada ou estornar automaticamente. Abra um chamado.');
-        } finally {
-          setProcessando(false);
-          setMensagem('');
-        }
-        return;
-      }
-      setErroPagamento(error?.message || 'Erro ao processar pagamento');
+      const query = new URLSearchParams({ grupoId });
+      if (nome || grupoNome) query.append('nome', grupoNome || nome);
+      if (resumo.retemMensalidade) query.append('aguardandoLotar', '1');
+      router.push(`/assinatura/sucesso?${query.toString()}`);
+    } catch {
+      // Falha de rede: a chave é mantida, então repetir não cobra duas vezes.
+      setErro(`Não foi possível confirmar agora. Tente de novo: a mesma confirmação não é cobrada duas vezes.${pixCreditado ? ` ${AVISO_PIX_NO_SALDO}` : ''}`);
     } finally {
       setProcessando(false);
       setMensagem('');
     }
   };
 
+  const podeFinalizar = Boolean(resumo) && aceito && !processando;
+
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gray-50 text-gray-900 px-4 pb-24 pt-[110px]">
+      <main className="min-h-screen bg-gray-50 text-gray-900 px-4 pb-36 md:pb-24 pt-[110px]">
         <div className="max-w-4xl mx-auto space-y-6">
           <FlowStepper currentStep={2} steps={['Relacionamento', 'Pagamento', 'Sucesso']} />
 
           <div className="space-y-2">
             <h1 className="text-2xl font-extrabold">Pagamento</h1>
-            <p className="text-gray-600 text-sm">Escolha a forma de pagamento e finalize sua entrada no grupo.</p>
+            <p className="text-gray-600 text-sm">Confira o que você paga hoje antes de entrar no grupo.</p>
+            {vinculoValido && (
+              <p className="text-gray-600 text-sm">
+                Vínculo declarado: <strong>{rotuloVinculo(vinculo)}</strong>{' '}
+                <button type="button" onClick={voltarAoRelacionamento} className="text-blue-600 font-semibold hover:underline">
+                  Alterar
+                </button>
+              </p>
+            )}
           </div>
 
-          <section className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-2">
+          {carregando && !resumo && <p className="text-sm text-gray-600">Carregando o resumo...</p>}
+
+          {recusa && (
+            <section className="bg-white border border-amber-200 rounded-2xl shadow-sm p-5 space-y-3">
+              <p className="text-sm text-amber-800">{recusa.error}</p>
+              {grupoId && (
+                <Link href={`/grupos/${grupoId}`} className="inline-block text-blue-700 font-semibold text-sm hover:underline">
+                  Ver o grupo
+                </Link>
+              )}
+            </section>
+          )}
+
+          {resumo && (
+            <>
+              <section className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-3">
                 <p className="text-xs uppercase tracking-wide text-gray-500">Resumo</p>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold">{grupoNome}</p>
-                    <p className="text-sm text-gray-600">Mensalidade do grupo, {NOTA_TAXA_COTEA}.</p>
+                <p className="text-lg font-semibold">{grupoNome || nome || 'Grupo'}</p>
+                <dl className="space-y-2 text-sm">
+                  <Linha rotulo={`Mensalidade (${NOTA_TAXA_COTEA})`} valor={reais(resumo.mensalidade)} />
+                  <Linha rotulo="Caução (1 mensalidade, devolvida conforme as regras abaixo)" valor={reais(resumo.caucao)} />
+                  {resumo.taxa > 0 && <Linha rotulo="Taxa do meio de pagamento" valor={reais(resumo.taxa)} />}
+                  <div className="border-t border-gray-100 pt-2">
+                    <Linha rotulo="Total de hoje" valor={reais(resumo.total)} destaque />
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">Valor hoje</p>
-                    <p className="text-xl font-bold">{precoTexto}</p>
-                  </div>
-                </div>
+                  <Linha rotulo={`Do seu saldo (disponível: ${reais(resumo.saldoDisponivel)})`} valor={reais(resumo.valorSaldo)} />
+                  <Linha rotulo="No Pix" valor={reais(resumo.valorPix)} />
+                </dl>
+                {resumo.valorPix > 0 && (
+                  <p className="text-xs text-gray-600">O Pix é gerado com o CPF do seu cadastro financeiro e entra no seu saldo antes da cobrança.</p>
+                )}
               </section>
 
-          <section className="space-y-4">
-            {metodos.map((item) => (
-              <label
-                key={item.id}
-                className={`flex items-center gap-4 bg-white border rounded-2xl p-5 shadow-sm cursor-pointer transition ${
-                  item.disabled
-                    ? 'opacity-60 cursor-not-allowed border-gray-100'
-                    : metodo === item.id
-                    ? 'border-blue-300 ring-2 ring-blue-100'
-                    : 'border-gray-100 hover:border-blue-200'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="metodo"
-                  value={item.id}
-                  checked={metodo === item.id}
-                  onChange={() => setMetodo(item.id)}
-                  disabled={item.disabled}
-                  className="w-5 h-5 accent-blue-600"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    {item.icon && <i className={`fa ${item.icon} text-blue-600`} aria-hidden="true"></i>}
-                    <p className="font-semibold">{item.titulo}</p>
-                  </div>
-                  <p className="text-sm text-gray-600">Pagamento confirmado em instantes.</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-gray-900">{item.valor}</p>
-                  <span className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-semibold">
-                    {item.badge}
-                  </span>
-                </div>
-              </label>
-            ))}
-            {saldoErro && <p className="text-sm text-red-600">Saldo: {saldoErro}</p>}
-          </section>
+              {resumo.retemMensalidade && (
+                <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-900 space-y-1">
+                  <p className="font-semibold">Este grupo só libera o acesso depois de lotar.</p>
+                  <p>Sua mensalidade fica retida até lá. Se você sair, ou o grupo acabar, antes de lotar, tudo o que você pagou volta para o seu saldo.</p>
+                </section>
+              )}
 
-          {metodo === 'pix' && (
-            <p className="text-xs text-gray-600">O Pix sera gerado com o CPF do seu cadastro financeiro.</p>
+              <section className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-2 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900">Vencimento e acesso</p>
+                <p>
+                  A mensalidade é mensal e conta a partir do envio do acesso: o próximo vencimento é no mesmo dia do mês
+                  seguinte (se esse dia não existir, no último dia do mês), no horário de Brasília.
+                </p>
+                <p>
+                  O dono tem até 5 dias corridos para enviar o acesso, contados {resumo.retemMensalidade ? 'de quando o grupo lotar' : 'da sua entrada'}.
+                </p>
+                {resumo.fidelidadeMeses > 0 && (
+                  <p>
+                    Fidelidade deste grupo: {resumo.fidelidadeMeses} {resumo.fidelidadeMeses === 1 ? 'mês' : 'meses'}, a partir do envio do acesso.
+                  </p>
+                )}
+              </section>
+
+              <section className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-3">
+                <p className="font-semibold text-gray-900">Regras da caução</p>
+                <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+                  {resumo.regras.itens.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <label className="flex items-start gap-3 border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-blue-300 transition">
+                  <input
+                    type="checkbox"
+                    className="mt-1 w-5 h-5 accent-blue-600"
+                    checked={aceito}
+                    onChange={() => {
+                      setAceito((v) => !v);
+                      setErro('');
+                    }}
+                  />
+                  <span className="text-sm text-gray-800">Li e aceito as regras da caução.</span>
+                </label>
+              </section>
+            </>
           )}
 
-          <section className="bg-white border border-gray-100 rounded-2xl shadow-sm">
-            <button
-              type="button"
-              onClick={() => setMostrarCupom((v) => !v)}
-              className="w-full flex items-center justify-between px-5 py-4 text-left font-semibold text-gray-900"
-            >
-              Tem um cupom?
-              <span className="text-blue-600 text-lg">{mostrarCupom ? '-' : '+'}</span>
-            </button>
-            {mostrarCupom && (
-              <div className="px-5 pb-5 flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  placeholder="Digite seu cupom"
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button className="px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold shadow hover:bg-blue-700 transition">
-                  Aplicar
-                </button>
-              </div>
-            )}
-          </section>
-
-          {!grupoCarregando && !precoGrupo.valido && (
-            <p className="text-sm text-red-600">O preco deste grupo esta indisponivel no momento. Nao e possivel assinar agora.</p>
-          )}
           {pendenciasCadastro && (
             <CadastroFinanceiroForm
               pendencias={pendenciasCadastro}
@@ -393,25 +299,23 @@ export default function Pagamento() {
               }}
             />
           )}
-          {erroPagamento && <p className="text-sm text-red-600">{erroPagamento}</p>}
+          {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
           {mensagem && <p className="text-sm text-blue-700">{mensagem}</p>}
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 md:static md:max-w-4xl md:mx-auto md:mt-8">
           <div className="bg-white border-t md:border border-gray-200 shadow-2xl md:shadow-sm px-4 py-4 md:rounded-2xl flex flex-col md:flex-row items-center md:items-stretch gap-3">
             <div className="flex-1 w-full">
-              <p className="text-xs text-gray-500">Pagamento</p>
-              <p className="text-lg font-bold text-gray-900">{precoTexto}</p>
-              <p className="text-xs text-gray-600">Transacao segura criptografada.</p>
+              <p className="text-xs text-gray-500">Total de hoje</p>
+              <p className="text-lg font-bold text-gray-900">{resumo ? reais(resumo.total) : '—'}</p>
+              <p className="text-xs text-gray-600">{resumo && !aceito ? 'Aceite as regras da caução para continuar.' : 'Transação segura criptografada.'}</p>
             </div>
             <button
               type="button"
               onClick={handleFinalizar}
-              disabled={!podeFinalizar || processando}
+              disabled={!podeFinalizar}
               className={`w-full md:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold shadow-lg transition ${
-                podeFinalizar && !processando
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                podeFinalizar ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-600 cursor-not-allowed'
               }`}
             >
               <i className="fa fa-lock" aria-hidden="true"></i>
@@ -421,5 +325,14 @@ export default function Pagamento() {
         </div>
       </main>
     </>
+  );
+}
+
+function Linha({ rotulo, valor, destaque = false }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <dt className={destaque ? 'font-semibold text-gray-900' : 'text-gray-600'}>{rotulo}</dt>
+      <dd className={`whitespace-nowrap ${destaque ? 'text-xl font-bold' : 'font-semibold'}`}>{valor}</dd>
+    </div>
   );
 }

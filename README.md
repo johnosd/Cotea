@@ -90,6 +90,12 @@ Migração dos CPFs para o cadastro financeiro: `node --env-file=.env.local scri
 
 Migração dos grupos para a moderação (aprovação de grupos): `node --env-file=.env.local scripts/migrar-moderacao-grupos.js` mostra o que mudaria; com `--aplicar` grava (grupos `ativo` e sem status ficam aprovados como legado; outros valores ficam fora do ar e aparecem como "não classificados"). No deploy, rode antes e de novo depois de publicar o código.
 
+Migração para o checkout com caução: `node --env-file=.env.local scripts/migrar-checkout-v2.js` mostra o que mudaria; com `--aplicar` grava (o índice por referência de `walletTransactions` deixa de ser único; faturas abertas do checkout antigo são canceladas e as pagas sem participação voltam ao saldo). **Aplique antes de publicar o código** e rode de novo depois; só então `database/setup-indexes.js`.
+
+## Entrada em grupo e caução
+
+O membro paga a mensalidade mais uma caução do mesmo valor; o saldo é usado primeiro e o PIX cobre a diferença. A caução volta ao saldo em qualquer saída (regra transitória). Em grupos que só liberam o acesso depois de lotar, a mensalidade fica retida até lá. A rotina `liquidacao-participacoes` completa devoluções e liberações pendentes.
+
 ## Estrutura de pastas
 
 ```
@@ -98,7 +104,7 @@ cotea/
 │   ├── api/                  # API Routes (serverless functions)
 │   │   ├── auth/             # NextAuth
 │   │   ├── grupos/           # CRUD de grupos
-│   │   ├── assinaturas/      # Pagamento e reembolso de assinaturas
+│   │   ├── assinaturas/      # Resumo e entrada em grupo (mensalidade + caução numa só operação)
 │   │   ├── wallet/           # Saldo e operações da carteira
 │   │   ├── withdraw/         # Solicitação e aprovação de saques
 │   │   ├── pix/              # PIX simulado (criar/confirmar)
@@ -126,6 +132,8 @@ cotea/
 │   ├── authz.js              # RBAC (roles e permissões)
 │   ├── wallet.js             # Cálculo de saldo e helpers de sessão
 │   ├── invoices.js           # Lógica de faturas
+│   ├── checkout.js           # Regras puras da entrada em grupo (resumo, caução, retenção, devolução)
+│   ├── checkout-servidor.js  # Entrada atômica, devolução da caução e liberação de mensalidades retidas
 │   ├── preco.js              # Regra única de preço por vaga (taxa Cotea de 5%, capacidade mínima 2)
 │   ├── calendario.js         # Prazos em dias corridos/úteis (horário de Brasília, feriados nacionais)
 │   ├── calendario-dados.js   # Leitura/validação das datas extras não úteis

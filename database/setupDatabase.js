@@ -148,9 +148,12 @@ async function run() {
     await db.collection("walletTransactions").createIndex({ walletId: 1, createdAt: -1 });
     await db.collection("walletTransactions").createIndex({ status: 1 });
     await db.collection("walletTransactions").createIndex({ walletId: 1, type: 1, status: 1 });
+    // Parcial e NAO unico (006-checkout-caucao, D-08): uma operacao tem varias pernas com a
+    // mesma referencia/tipo/origem; a idempotencia e do indice por operacaoId abaixo. Banco
+    // antigo: rodar scripts/migrar-checkout-v2.js --aplicar ANTES deste script.
     await db.collection("walletTransactions").createIndex(
       { referenceId: 1, type: 1, source: 1 },
-      { unique: true, partialFilterExpression: { referenceId: { $type: "string" } } }
+      { partialFilterExpression: { referenceId: { $type: "string" } } }
     );
     // 002-ledger-segmentado: idempotencia por operacao (D-05) e saldo por categoria
     await db.collection("walletTransactions").createIndex(

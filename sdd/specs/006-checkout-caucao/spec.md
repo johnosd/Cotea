@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-26
 
-**Status**: Especificada
+**Status**: Em Execução
 
 **Input**: Backlog `V2-06 · P0 · Checkout v2 com caução e elegibilidade no
 servidor`: antes de pagar, mostrar mensalidade, caução de 1 mensalidade (ambas

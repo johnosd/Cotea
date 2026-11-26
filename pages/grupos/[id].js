@@ -11,6 +11,7 @@ import { NOTA_TAXA_COTEA } from '../../components/PrevisaoPreco';
 import { precoDoGrupo } from '../../lib/preco';
 import { montarRespostaGrupo } from '../../lib/grupo-publico';
 import { identificarVisaoGrupo } from '../../lib/grupo-visao-servidor';
+import { rotuloVinculo } from '../../lib/checkout';
 import { grupoEhPublico, podeVerGrupo, statusEfetivo, vencimentoAprovacao } from '../../lib/moderacao';
 
 const DEFAULT_CONTENT = {
@@ -214,6 +215,7 @@ export default function GrupoDetalhe({ grupo, visao, estadoGrupo }) {
                 dataEnvioAcesso: item?.dataEnvioAcesso,
                 status: item?.status,
                 papel: item?.papel,
+                vinculo: item?.vinculo,
               }
         )
       : DEFAULT_CONTENT.participantes;
@@ -624,7 +626,13 @@ export default function GrupoDetalhe({ grupo, visao, estadoGrupo }) {
                         className="rounded-full object-cover"
                         unoptimized
                       />
-                      <span className="text-sm font-medium text-gray-800">{pessoa.nome}</span>
+                      <span className="text-sm font-medium text-gray-800">
+                        {pessoa.nome}
+                        {/* só vem nas props para dono e equipe (visão completa) */}
+                        {rotuloVinculo(pessoa.vinculo) && (
+                          <span className="block text-xs font-normal text-gray-500">Vínculo: {rotuloVinculo(pessoa.vinculo)}</span>
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -762,6 +770,7 @@ export async function getServerSideProps({ params, req, res }) {
             userId: 1,
             aguardandoEnvioAcesso: 1,
             dataEnvioAcesso: 1,
+            vinculo: 1,
             nome: { $ifNull: ['$user.name', '$user.nome'] },
             email: '$user.email',
             avatar: { $ifNull: ['$user.image', '$user.avatar'] },
@@ -818,6 +827,8 @@ export async function getServerSideProps({ params, req, res }) {
         papel: m.papel,
         aguardandoEnvioAcesso: m.aguardandoEnvioAcesso,
         dataEnvioAcesso: m.dataEnvioAcesso,
+        // 006-checkout-caucao (FR-011): vínculo declarado, só para dono e equipe.
+        vinculo: m.vinculo,
       };
     });
 

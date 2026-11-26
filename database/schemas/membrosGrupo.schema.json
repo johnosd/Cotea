@@ -17,6 +17,33 @@
         "proximaRenovacao": { "bsonType": "null" }
       }
     },
+    "invoiceId": { "bsonType": "string", "description": "Fatura de entrada (006-checkout-caucao)" },
+    "valorPago": { "bsonType": "number" },
+    "mensalidade": { "bsonType": "number" },
+    "pagamentoStatus": { "bsonType": "string" },
+    "pagamentoData": { "bsonType": "date" },
+    "dataEnvioAcesso": { "bsonType": "date" },
+    "vinculo": { "enum": ["amigo", "familia", "conhecido", "desconhecido"] },
+    "aceiteRegras": {
+      "bsonType": "object",
+      "properties": { "versao": { "bsonType": "string" }, "em": { "bsonType": "date" } }
+    },
+    "caucao": {
+      "bsonType": "object",
+      "properties": {
+        "valor": { "bsonType": "number" },
+        "situacao": { "enum": ["bloqueada", "devolvida"] },
+        "devolvidaEm": { "bsonType": "date" }
+      }
+    },
+    "retencao": {
+      "bsonType": "object",
+      "properties": {
+        "valor": { "bsonType": "number" },
+        "situacao": { "enum": ["retida", "a_liberar", "liberada", "devolvida"] },
+        "em": { "bsonType": "date" }
+      }
+    },
     "dataEntrada": { "bsonType": "date" },
     "createdAt": { "bsonType": "date" }
   }

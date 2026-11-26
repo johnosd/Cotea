@@ -1,158 +1,84 @@
-// Regressao: uma fatura paga da direito a uma entrada. Fatura ja vinculada a uma
-// participacao (mesmo encerrada via DELETE) nao pode criar outra via POST join.
+// Regressão: um pagamento dá direito a UMA entrada. Reescrito na 006-checkout-caucao
+// (T014): o POST /join (que criava o membro a partir de uma fatura) foi desativado, e a
+// proteção passou para a chave da confirmação no POST /api/assinaturas/pay.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ObjectId } from 'mongodb';
-import { criarDbMemoria, criarRes } from '../helpers/db-grupos-memoria.js';
+import { criarBancoTransacional } from '../helpers/db-transacional-memoria.js';
+import { chamar, criarCenario, sessao } from '../helpers/checkout-cenario.js';
 
-const estado = vi.hoisted(() => ({ db: null, session: null, operacoes: [] }));
+const estado = vi.hoisted(() => ({ banco: null, session: null }));
 
-vi.mock('next-auth', () => ({ getServerSession: vi.fn(async () => estado.session) }));
+vi.mock('next-auth', () => ({ getServerSession: vi.fn(async (req) => req?.sessao ?? estado.session) }));
 vi.mock('../../pages/api/auth/[...nextauth]', () => ({ authOptions: {} }));
 vi.mock('../../lib/audit', () => ({ logAudit: vi.fn(async () => {}) }));
-vi.mock('../../lib/mongodb', () => ({
-  default: Promise.resolve({ db: () => estado.db }),
-  getDb: vi.fn(async () => estado.db),
-  getClient: vi.fn(),
-  getWalletByUser: vi.fn(),
-  createWallet: vi.fn(),
-}));
-vi.mock('../../lib/wallet', async (importOriginal) => ({
-  ...(await importOriginal()),
-  ensureWallet: vi.fn(async () => ({ _id: 'wallet-membro' })),
-}));
-vi.mock('../../lib/ledger/servidor', () => ({
-  obterLedger: vi.fn(async () => ({
-    registrarOperacao: async (op) => {
-      estado.operacoes.push(op);
-      return { criada: true, lancamentos: op.pernas.map((p, i) => ({ _id: `l-${i}`, ...p })) };
-    },
-  })),
+vi.mock('../../lib/mongodb', async () => (await import('../helpers/checkout-cenario.js')).mongoFalso(estado));
+vi.mock('../../lib/cadastro-financeiro-servidor', () => ({
+  verificarCadastroFinanceiro: vi.fn(async () => ({ ok: true, cpf: '52998224725', usuario: {} })),
 }));
 
+const { calcularResumo } = await import('../../lib/ledger/ledger.js');
+const { default: handlerPay } = await import('../../pages/api/assinaturas/pay.js');
+const { default: handlerResumo } = await import('../../pages/api/assinaturas/resumo.js');
 const { default: handlerJoin } = await import('../../pages/api/grupos/[id]/join.js');
 
-const membroId = new ObjectId();
-const donoId = new ObjectId();
+const c = criarCenario(estado, { calcularResumo });
+let membroId;
 let grupoId;
 
 beforeEach(() => {
-  estado.db = criarDbMemoria();
-  estado.operacoes = [];
-  estado.session = { user: { id: String(membroId), email: 'm@teste', contaValidada: true } };
-  grupoId = new ObjectId();
-  estado.db.collection('grupos').docs.push({ _id: grupoId, nome: 'G', capacidadeTotal: 4, status: 'ativo', adminId: donoId });
-  estado.db.collection('membrosGrupo').docs.push({ _id: new ObjectId(), grupoId, userId: donoId, papel: 'admin', status: 'ativo' });
+  estado.banco = criarBancoTransacional();
+  membroId = c.semearUsuario(100);
+  estado.session = sessao(membroId);
+  grupoId = c.semearGrupo();
 });
 
-const semearFatura = (id, extra = {}) => {
-  const f = { _id: id, userId: String(membroId), grupoId: String(grupoId), amount: 10.5, status: 'paga', paidAt: new Date(), ...extra };
-  estado.db.collection('invoices').docs.push(f);
-  return f;
+const semearFatura = (extra = {}) => c.docs('invoices').push({
+  _id: 'fatura-1', userId: String(membroId), grupoId: String(grupoId), amount: 10.5, status: 'paga', ...extra,
+});
+const sair = () => {
+  const lista = c.docs('membrosGrupo');
+  lista.splice(lista.findIndex((m) => String(m.userId) === String(membroId)), 1);
 };
-const fatura = (id) => estado.db.collection('invoices').docs.find((f) => f._id === id);
-const meusMembros = () => estado.db.collection('membrosGrupo').docs.filter((m) => String(m.userId) === String(membroId));
 
-const chamar = async (req) => {
-  const res = criarRes();
-  await handlerJoin({ headers: {}, socket: {}, query: { id: String(grupoId) }, ...req }, res);
-  return res;
-};
-const entrar = (invoiceId) => chamar({ method: 'POST', body: { invoiceId } });
-const sair = () => chamar({ method: 'DELETE', body: { userId: String(membroId) } });
+describe('um pagamento, uma entrada', () => {
+  it.each([
+    ['livre', {}],
+    ['vinculada a uma entrada encerrada', { vinculadoEm: new Date() }],
+  ])('POST /join com fatura paga %s: 410 e nenhum membro', async (_rotulo, extra) => {
+    semearFatura(extra);
+    const res = await chamar(handlerJoin, { query: { id: String(grupoId) }, body: { invoiceId: 'fatura-1' } });
+    expect(res.statusCode).toBe(410);
+    expect(res.body.codigo).toBe('rota_desativada');
+    expect(c.participacao(grupoId, membroId)).toBeUndefined();
+  });
 
-describe('POST /api/grupos/[id]/join — fatura vinculada nao gera nova entrada', () => {
-  it('entrar, sair e reentrar com a mesma fatura: 409 fatura_ja_utilizada, sem membro e sem estorno', async () => {
-    semearFatura('f1');
-    expect((await entrar('f1')).statusCode).toBe(200);
-    expect(meusMembros()).toHaveLength(1);
-
-    expect((await sair()).statusCode).toBe(200);
-    expect(meusMembros()).toHaveLength(0);
-
-    const res = await entrar('f1');
+  it('entrar, sair e repetir a mesma confirmação: 409, sem membro e sem nova cobrança', async () => {
+    const pedido = await c.corpoDeEntrada(handlerResumo, membroId, grupoId);
+    expect((await chamar(handlerPay, { body: pedido })).statusCode).toBe(200);
+    sair();
+    const res = await chamar(handlerPay, { body: pedido });
     expect(res.statusCode).toBe(409);
-    expect(res.body).toMatchObject({ codigo: 'fatura_ja_utilizada', estornada: false });
-    expect(meusMembros()).toHaveLength(0);
-    expect(estado.operacoes).toHaveLength(0);
-    expect(fatura('f1').status).toBe('paga');
+    expect(res.body.codigo).toBe('confirmacao_ja_utilizada');
+    expect(c.participacao(grupoId, membroId)).toBeUndefined();
+    expect(c.debitos()).toHaveLength(1);
   });
 
-  it('o vinculo (membroId/vinculadoEm) permanece gravado apos sair e apos tentativa negada (regra do refund B-02)', async () => {
-    semearFatura('f1');
-    await entrar('f1');
-    const { membroId: vinculo, vinculadoEm } = fatura('f1');
-    expect(vinculo).toBeTruthy();
-    await sair();
-    await entrar('f1');
-    expect(fatura('f1').membroId).toEqual(vinculo);
-    expect(fatura('f1').vinculadoEm).toEqual(vinculadoEm);
+  it('a mesma chave em outro grupo não aproveita o pagamento anterior', async () => {
+    const pedido = await c.corpoDeEntrada(handlerResumo, membroId, grupoId);
+    await chamar(handlerPay, { body: pedido });
+    const outro = c.semearGrupo();
+    const res = await chamar(handlerPay, { body: { ...pedido, grupoId: String(outro) } });
+    expect(res.body.codigo).toBe('confirmacao_ja_utilizada');
+    expect(c.participacao(outro, membroId)).toBeUndefined();
+    expect(c.debitos()).toHaveLength(1);
   });
 
-  it('fatura vinculada a membro que nao existe mais: 409', async () => {
-    semearFatura('f1', { membroId: new ObjectId(), vinculadoEm: new Date() });
-    const res = await entrar('f1');
-    expect(res.statusCode).toBe(409);
-    expect(res.body.codigo).toBe('fatura_ja_utilizada');
-    expect(meusMembros()).toHaveLength(0);
-  });
-
-  it('so um dos campos de vinculo ja basta para negar', async () => {
-    semearFatura('f1', { vinculadoEm: new Date() });
-    semearFatura('f2', { membroId: new ObjectId() });
-    expect((await entrar('f1')).statusCode).toBe(409);
-    expect((await entrar('f2')).statusCode).toBe(409);
-    expect(meusMembros()).toHaveLength(0);
-  });
-
-  it('caso idempotente: ja e membro com a mesma fatura vinculada -> 200 e vinculo intacto', async () => {
-    semearFatura('f1');
-    await entrar('f1');
-    const antes = { ...fatura('f1') };
-    const res = await entrar('f1');
+  it('depois de sair, uma confirmação nova cobra de novo e permite a reentrada', async () => {
+    await chamar(handlerPay, { body: await c.corpoDeEntrada(handlerResumo, membroId, grupoId) });
+    sair();
+    const res = await chamar(handlerPay, { body: await c.corpoDeEntrada(handlerResumo, membroId, grupoId) });
     expect(res.statusCode).toBe(200);
-    expect(res.body.message).toBe('Usuario ja e membro');
-    expect(meusMembros()).toHaveLength(1);
-    expect(fatura('f1').membroId).toEqual(antes.membroId);
-    expect(fatura('f1').vinculadoEm).toEqual(antes.vinculadoEm);
-  });
-
-  it('ja e membro e chama com outra fatura ja vinculada: 200 e nao reescreve o vinculo dela', async () => {
-    semearFatura('f1');
-    await entrar('f1');
-    const antiga = new ObjectId();
-    const data = new Date('2026-01-01');
-    semearFatura('f2', { membroId: antiga, vinculadoEm: data });
-    const res = await entrar('f2');
-    expect(res.statusCode).toBe(200);
-    expect(fatura('f2').membroId).toEqual(antiga);
-    expect(fatura('f2').vinculadoEm).toEqual(data);
-  });
-
-  it('ja e membro com fatura ainda livre: reconciliacao continua vinculando', async () => {
-    estado.db.collection('membrosGrupo').docs.push({ _id: new ObjectId(), grupoId, userId: membroId, papel: 'membro', status: 'ativo' });
-    semearFatura('f1');
-    const res = await entrar('f1');
-    expect(res.statusCode).toBe(200);
-    expect(fatura('f1').membroId).toBeTruthy();
-    expect(fatura('f1').vinculadoEm).toBeInstanceOf(Date);
-  });
-
-  it('pagando uma fatura nova depois de sair, a reentrada e permitida', async () => {
-    semearFatura('f1');
-    await entrar('f1');
-    await sair();
-    semearFatura('f2');
-    const res = await entrar('f2');
-    expect(res.statusCode).toBe(200);
-    expect(res.body.message).toBe('Membro adicionado');
-    expect(meusMembros()).toHaveLength(1);
-    expect(fatura('f2').membroId).toBeTruthy();
-  });
-
-  it('primeira entrada com fatura livre continua funcionando', async () => {
-    semearFatura('f1');
-    const res = await entrar('f1');
-    expect(res.statusCode).toBe(200);
-    expect(res.body.message).toBe('Membro adicionado');
+    expect(c.debitos()).toHaveLength(2);
+    expect(c.docs('invoices')).toHaveLength(2);
+    expect(c.participacao(grupoId, membroId)).toBeTruthy();
   });
 });

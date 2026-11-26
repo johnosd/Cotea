@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { useSession, getSession } from 'next-auth/react';
 import Header from '../../../components/Header';
+import { planejarLiquidacao } from '../../../lib/checkout';
 import clientPromise from '../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { authOptions } from '../../api/auth/[...nextauth]';
 import { getServerSession } from 'next-auth';
 
-export default function CancelarGrupo({ grupo, membroId }) {
+const reais = (valor) => `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
+
+export default function CancelarGrupo({ grupo, membroId, devolucao }) {
   const router = useRouter();
   const { status } = useSession();
   const [enviando, setEnviando] = useState(false);
@@ -17,8 +20,9 @@ export default function CancelarGrupo({ grupo, membroId }) {
   const handleCancelar = async () => {
     setErro('');
     setSucesso('');
+    const aviso = devolucao?.total > 0 ? ` ${reais(devolucao.total)} voltam para o seu saldo.` : '';
     const confirmar = window.confirm(
-      'Tem certeza que deseja cancelar sua participacao? Você perderá o acesso e beneficios deste grupo.'
+      `Tem certeza que deseja cancelar sua participacao? Você perderá o acesso e beneficios deste grupo.${aviso}`
     );
     if (!confirmar) return;
     setEnviando(true);
@@ -30,7 +34,8 @@ export default function CancelarGrupo({ grupo, membroId }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Falha ao cancelar participacao');
-      setSucesso('Participacao cancelada. Você sera redirecionado.');
+      const devolvido = Number(data?.devolvido?.total) || 0;
+      setSucesso(`Participacao cancelada.${devolvido > 0 ? ` ${reais(devolvido)} voltaram para o seu saldo.` : ''} Você sera redirecionado.`);
       if (typeof window !== 'undefined') {
         localStorage.removeItem(`grupo-joined-${grupo._id}`);
       }
@@ -71,6 +76,21 @@ export default function CancelarGrupo({ grupo, membroId }) {
               <li>Se houver pagamentos recorrentes fora da plataforma, cancele-os diretamente com o admin.</li>
             </ul>
           </div>
+
+          {devolucao?.temEntrada && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-gray-800 space-y-1">
+              {devolucao.total > 0 ? (
+                <>
+                  <p className="font-semibold">Voltam para o seu saldo: {reais(devolucao.total)}</p>
+                  {devolucao.caucao > 0 && <p>Caução: {reais(devolucao.caucao)}</p>}
+                  {devolucao.mensalidade > 0 && <p>Mensalidade retida: {reais(devolucao.mensalidade)}</p>}
+                </>
+              ) : (
+                <p>Não há valor a devolver: a caução desta participação já voltou para o seu saldo.</p>
+              )}
+              {devolucao.mensalidade === 0 && <p>A mensalidade já paga não é devolvida.</p>}
+            </div>
+          )}
 
           {erro && <p className="text-sm text-red-600">{erro}</p>}
           {sucesso && <p className="text-sm text-green-600">{sucesso}</p>}
@@ -139,8 +159,17 @@ export async function getServerSideProps(ctx) {
 
   // Só o que a página usa (005, C-01): nada de `moderacao` (motivo, histórico, ids de admin)
   // nem campos internos do grupo para o membro.
+  // O que volta ao sair (006, FR-023); o valor que vale é o calculado na saída.
+  const plano = planejarLiquidacao({ membro, grupo });
+
   return {
     props: {
+      devolucao: {
+        caucao: plano.caucao,
+        mensalidade: plano.mensalidade,
+        total: plano.total,
+        temEntrada: Boolean(membro.caucao),
+      },
       grupo: {
         _id: String(grupo._id),
         nome: grupo.nome || '',

@@ -31,4 +31,19 @@ describe('createInvoice — composicao', () => {
     const f = await createInvoice({ userId: 'u', grupoId: 'g', amount: 10 });
     expect(f).not.toHaveProperty('composicao');
   });
+
+  // 006-checkout-caucao (FR-019): a fatura de entrada registra caução e taxa do meio.
+  it('entrada: caução e taxa entram na soma e na composição; id e dados da entrada informados', async () => {
+    const f = await createInvoice({
+      _id: 'fatura-1', userId: 'u', grupoId: 'g', amount: 21, status: 'paga',
+      composicao: { repasseDono: 10, taxaCotea: 0.5, caucao: 10.5, taxaPagamento: 0 },
+      entrada: { chave: 'k' }, walletId: 'w', ledgerId: 'l', paidAt: new Date(),
+    });
+    expect(f).toMatchObject({ _id: 'fatura-1', entrada: { chave: 'k' }, walletId: 'w', ledgerId: 'l' });
+    expect(f.composicao).toEqual({ repasseDono: 10, taxaCotea: 0.5, caucao: 10.5, taxaPagamento: 0 });
+    await expect(createInvoice({ userId: 'u', grupoId: 'g', amount: 21, composicao: { repasseDono: 10, taxaCotea: 0.5, caucao: 10 } }))
+      .rejects.toThrow('Composicao da fatura nao soma o valor');
+    await expect(createInvoice({ userId: 'u', grupoId: 'g', amount: 21, composicao: { repasseDono: 31.5, taxaCotea: 0, caucao: -10.5 } }))
+      .rejects.toThrow('Composicao da fatura invalida');
+  });
 });

@@ -32,6 +32,14 @@
       "description": "Estado de moderação (005-aprovacao-grupos): em_aprovacao | ajustes | rejeitado | ativo (aprovado e público) | cancelado. Ausente = ativo (legado)."
     },
     "statusDetalhado": { "bsonType": "string" },
+    "versaoParticipacao": {
+      "bsonType": "number",
+      "description": "Trava de concorrência das participações (006-checkout-caucao): $inc em toda entrada e saída."
+    },
+    "lotadoEm": {
+      "bsonType": "date",
+      "description": "Só em grupo apos_completar: quando lotou pela primeira vez (006); depois disso não há mensalidade retida."
+    },
     "beneficios": {
       "bsonType": "array",
       "items": { "bsonType": "string" }

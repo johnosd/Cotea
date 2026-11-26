@@ -1,25 +1,24 @@
-import { ObjectId } from 'mongodb';
+// POST /api/assinaturas/pay — entrada em grupo numa única operação (006-checkout-caucao):
+// cobra mensalidade + caução do saldo, cria a participação e a fatura. Idempotente pela
+// `chave` gerada na tela. Contrato em sdd/specs/006-checkout-caucao/contracts/api-entrada.md.
+//
+// A ORDEM das checagens é parte do contrato (inclusive das features 004 e 005). Nenhum
+// valor vem do cliente: `versaoResumo` e `saldoVisto` só detectam que o resumo envelheceu.
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]';
 import { getDb } from '../../../lib/mongodb';
-import { INVOICE_STATUS, createInvoice, getInvoiceById, markInvoiceAwaitingTopUp, markInvoicePaid } from '../../../lib/invoices';
-import { calculateBalances, ensureWallet, getSessionUserId, normalizeAmount } from '../../../lib/wallet';
-import { obterLedger } from '../../../lib/ledger/servidor';
-import { CATEGORIAS } from '../../../lib/ledger/categorias';
-import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
-import { logAudit } from '../../../lib/audit';
-import { precoDoGrupo } from '../../../lib/preco';
-import { avaliarEntradaNoGrupo } from '../../../lib/grupo-entrada';
+import { calculateBalances, ensureWallet, getSessionUserId } from '../../../lib/wallet';
 import { verificarCadastroFinanceiro } from '../../../lib/cadastro-financeiro-servidor';
+import { parseObjectId } from '../../../lib/grupos-utils';
+import { getClientIp } from '../../../lib/ratelimit';
+import { avaliarEntradaNoGrupo } from '../../../lib/grupo-entrada';
+import {
+  calcularResumoEntrada, chaveValida, montarResumoParaTela, validarDadosEntrada,
+} from '../../../lib/checkout';
+import { RecusaEntrada, buscarEntradaPorChave, registrarEntrada } from '../../../lib/checkout-servidor';
+import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 
-// Unicos status de fatura existente que o pay pode cobrar (ou reabrir para recarga).
-const STATUS_FATURA_COBRAVEL = [INVOICE_STATUS.AGUARDANDO_PAGAMENTO, INVOICE_STATUS.AGUARDANDO_RECARGA];
-
-const parseObjectId =(valor) => {
-  if (valor instanceof ObjectId) return valor;
-  if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
-  return null;
-};
+const centavos = (valor) => Math.round(Number(valor) * 100);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -41,189 +40,103 @@ export default async function handler(req, res) {
     const verificacao = await verificarCadastroFinanceiro(userId);
     if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
 
-    const grupoIdRaw = String(req.body?.grupoId || '').trim();
-    const invoiceIdRaw = String(req.body?.invoiceId || '').trim() || null;
-    const grupoIdObj = parseObjectId(grupoIdRaw);
-    if (!grupoIdObj) {
+    const grupoId = parseObjectId(String(req.body?.grupoId || '').trim());
+    if (!grupoId) {
       return res.status(400).json({ error: 'grupoId obrigatorio e invalido' });
     }
+    const { chave, vinculo, aceiteRegras, versaoResumo, saldoVisto } = req.body || {};
 
     const db = await getDb();
-    const grupo = await db.collection('grupos').findOne(
-      { _id: grupoIdObj },
-      { projection: { nome: 1, valorPorVaga: 1, repassePorVaga: 1, taxaPorVaga: 1, precoValido: 1, status: 1, capacidadeTotal: 1, adminId: 1 } }
-    );
-    if (!grupo) {
-      return res.status(404).json({ error: 'Grupo nao encontrado' });
+    // Repetição da mesma confirmação (FR-016): responde o que já aconteceu.
+    const responderRepetida = async () => {
+      if (!chaveValida(chave)) return false;
+      const anterior = await buscarEntradaPorChave({ db, userId, grupoId, chave });
+      if (!anterior) return false;
+      res.status(anterior.http).json(anterior.body);
+      return true;
+    };
+    if (await responderRepetida()) return undefined;
+    // Antes de qualquer recusa, reconsulta: uma requisição gêmea pode ter acabado de
+    // concluir (e por isso "já é membro" ou "o saldo mudou").
+    const recusar = async (http, body) => {
+      if (await responderRepetida()) return undefined;
+      return res.status(http).json(body);
+    };
+
+    const grupo = await db.collection('grupos').findOne({ _id: grupoId });
+    if (!grupo) return await recusar(404, { error: 'Grupo nao encontrado' });
+
+    const membros = await db.collection('membrosGrupo').find({ grupoId }).toArray();
+    const impedimento = avaliarEntradaNoGrupo({ grupo, userId, membros });
+    if (impedimento) {
+      return await recusar(impedimento.http, { error: impedimento.error, codigo: impedimento.codigo });
     }
 
-    // Preco vem so do grupo (003-preco-por-vaga, D-07): sem fallback para valorTotal
-    // nem para o amount enviado pelo cliente. Fatura existente e cobrada pelo
-    // proprio valor, congelado na emissao (FR-016).
-    let invoice = null;
-    let preco = null;
-    let amount = NaN;
-    if (invoiceIdRaw) {
-      invoice = await getInvoiceById(invoiceIdRaw);
-      if (!invoice || invoice.userId !== String(userId) || invoice.grupoId !== String(grupoIdRaw)) {
-        return res.status(404).json({ error: 'Fatura nao encontrada para este usuario/grupo' });
-      }
-      // Fatura existente so segue se estiver paga (reconciliacao) ou aberta. Estornada
-      // exige fatura nova; status desconhecido nunca e cobrado nem reaberto.
-      if (invoice.status === INVOICE_STATUS.ESTORNADA) {
-        return res.status(409).json({
-          error: 'Esta fatura foi estornada. Inicie um novo pagamento.',
-          codigo: 'fatura_estornada',
-        });
-      }
-      if (!STATUS_FATURA_COBRAVEL.includes(invoice.status) && invoice.status !== INVOICE_STATUS.PAGA) {
-        return res.status(409).json({
-          error: 'Fatura indisponivel para pagamento. Inicie um novo pagamento.',
-          codigo: 'fatura_indisponivel',
-        });
-      }
-      amount = normalizeAmount(invoice.amount);
-    } else {
-      preco = precoDoGrupo(grupo);
-      if (!preco.valido) {
-        return res.status(409).json({ error: 'Preco indisponivel para este grupo', codigo: 'preco_indisponivel' });
-      }
-      amount = preco.valorPorVaga;
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ error: 'Valor da fatura invalido' });
+    const resumo = calcularResumoEntrada({ grupo, membros });
+    if (!resumo.valido) {
+      return await recusar(409, { error: 'Preco indisponivel para este grupo', codigo: 'preco_indisponivel' });
     }
 
-    // B-04: nada e cobrado se a entrada e impossivel (grupo indisponivel/cheio,
-    // usuario ja membro/dono/banido). Fatura ja paga nao e reavaliada: segue
-    // devolvendo 200 para a reconciliacao de pagamentos ja feitos.
-    if (!invoice || invoice.status !== INVOICE_STATUS.PAGA) {
-      const membros = await db.collection('membrosGrupo').find({ grupoId: grupoIdObj }).toArray();
-      const impedimento = avaliarEntradaNoGrupo({ grupo, userId, membros });
-      if (impedimento) {
-        return res.status(impedimento.http).json({ error: impedimento.error, codigo: impedimento.codigo });
-      }
-    }
+    const problema = validarDadosEntrada({ chave, vinculo, aceiteRegras });
+    if (problema) return await recusar(400, problema);
 
     const wallet = await ensureWallet(userId);
-
-    if (invoice) {
-      if (invoice.status === INVOICE_STATUS.PAGA) {
-        return res.status(200).json({
-          invoiceId: invoice._id,
-          status: invoice.status,
-          amount: invoice.amount,
-          walletId: invoice.walletId || wallet._id,
-          message: 'Fatura ja esta paga',
-        });
-      }
-    } else {
-      invoice = await createInvoice({
-        userId,
-        grupoId: grupoIdRaw,
-        amount,
-        composicao: { repasseDono: preco.repasse, taxaCotea: preco.taxa },
-        status: INVOICE_STATUS.AGUARDANDO_PAGAMENTO,
-        description: `Assinatura do grupo ${grupo?.nome || ''}`.trim(),
-        metadata: { grupoNome: grupo?.nome || '', origem: 'checkout_grupo' },
-      });
-    }
-
-    // Débito pessoal pelo núcleo (FR-008): o saldo é conferido dentro da
-    // transação e a fatura é marcada paga na MESMA transação (D-08).
-    const ledger = await obterLedger();
-    let operacao = null;
-    let saldoInsuficiente = null;
-    try {
-      operacao = await ledger.registrarOperacao({
-        operacaoId: `assinatura_grupo:${invoice._id}`,
-        source: 'assinatura_grupo',
-        referenceId: invoice._id,
-        descricao: `Assinatura do grupo ${grupo?.nome || grupoIdRaw}`,
-        pernas: [{
-          walletId: wallet._id,
-          type: 'debit',
-          categoria: CATEGORIAS.PESSOAL,
-          valor: amount,
-          grupoId: grupoIdRaw,
-          organizacaoId: null,
-        }],
-        extra: ({ sessao, lancamentos }) => markInvoicePaid({
-          invoiceId: invoice._id,
-          walletId: wallet._id,
-          ledgerId: lancamentos[0]._id,
-          paidAt: new Date(),
-        }, { session: sessao }),
-      });
-    } catch (err) {
-      if (!(err instanceof SaldoInsuficienteError)) throw err;
-      saldoInsuficiente = err;
-    }
-
-    // Debito ja existia (repeticao do mesmo operacaoId): nada foi cobrado agora e o
-    // `extra` nao rodou. So responde "paga" se a fatura realmente esta paga.
-    if (operacao && !operacao.criada) {
-      const atual = await getInvoiceById(invoice._id);
-      if (atual?.status !== INVOICE_STATUS.PAGA) {
-        return res.status(409).json({
-          error: 'Fatura em estado inconsistente. Inicie um novo pagamento.',
-          codigo: 'fatura_inconsistente',
-        });
-      }
-      return res.status(200).json({
-        invoiceId: atual._id,
-        status: atual.status,
-        amount: atual.amount,
-        walletId: atual.walletId || wallet._id,
-        message: 'Fatura ja esta paga',
-      });
-    }
-
-    if (operacao) {
-      const ledgerEntry = operacao.lancamentos[0];
-      const updatedInvoice = operacao.resultadoExtra;
-      const updatedBalances = await calculateBalances(wallet._id);
-
-      await logAudit({
-        action: 'assinatura.paid',
-        actorId: String(userId),
-        actorEmail: session.user.email,
-        targetId: String(updatedInvoice?._id || invoice._id),
-        targetCollection: 'invoices',
-        details: { grupoId: grupoIdRaw, grupoNome: grupo.nome, amount, ledgerId: String(ledgerEntry._id) },
-        ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
-      });
-
-      return res.status(200).json({
-        invoiceId: updatedInvoice?._id || invoice._id,
-        status: INVOICE_STATUS.PAGA,
-        ledgerId: ledgerEntry._id,
-        walletId: wallet._id,
-        amount,
-        saldoAposDebito: updatedBalances.available,
-        grupoId: grupoIdRaw,
-      });
-    }
-
-    const saldoDisponivel = Number(saldoInsuficiente.disponivel) || 0;
-    const faltante = Math.max(Math.round((amount - saldoDisponivel) * 100) / 100, 0);
-    const awaitingInvoice = await markInvoiceAwaitingTopUp({
-      invoiceId: invoice._id,
-      faltante,
-      saldoDisponivel,
+    const lerSaldo = async () => (await calculateBalances(wallet._id)).available;
+    const saldo = await lerSaldo();
+    const desatualizado = async (resumoAtual) => recusar(409, {
+      error: 'As condicoes da entrada mudaram. Confira o resumo e confirme de novo.',
+      codigo: 'resumo_desatualizado',
+      resumo: montarResumoParaTela(resumoAtual, await lerSaldo()),
     });
+    const semSaldo = async () => recusar(402, {
+      error: 'Saldo insuficiente para a entrada.',
+      codigo: 'saldo_insuficiente',
+      resumo: montarResumoParaTela(resumo, await lerSaldo()),
+    });
+
+    if (versaoResumo !== resumo.versaoResumo || centavos(saldoVisto) !== centavos(saldo)) {
+      return await desatualizado(resumo);
+    }
+    if (centavos(saldo) < centavos(resumo.total)) return await semSaldo();
+
+    let entrada;
+    try {
+      entrada = await registrarEntrada({
+        db, grupo, userId, walletId: wallet._id, resumo,
+        dados: { chave, vinculo, aceiteRegras },
+        ator: { email: session.user.email, ip: getClientIp(req) },
+      });
+    } catch (erro) {
+      if (erro instanceof RecusaEntrada) {
+        return erro.resumoAtual ? await desatualizado(erro.resumoAtual) : await recusar(erro.http, erro.body);
+      }
+      if (erro instanceof SaldoInsuficienteError) return await semSaldo();
+      // Índice único de membrosGrupo: outra entrada do mesmo usuário venceu.
+      if (erro?.code === 11000) {
+        return await recusar(409, { error: 'Voce ja participa deste grupo', codigo: 'ja_membro' });
+      }
+      throw erro;
+    }
+
+    if (!entrada.criada) {
+      // A operação desta chave já existia: nada foi cobrado agora.
+      return await recusar(409, {
+        error: 'Esta confirmacao ja foi usada. Inicie um novo pagamento.',
+        codigo: 'confirmacao_ja_utilizada',
+      });
+    }
 
     return res.status(200).json({
-      invoiceId: awaitingInvoice?._id || invoice._id,
-      status: INVOICE_STATUS.AGUARDANDO_RECARGA,
-      faltante,
-      saldoDisponivel,
-      walletId: wallet._id,
-      amount,
-      grupoId: grupoIdRaw,
+      status: 'paga',
+      repetida: false,
+      grupoId: String(grupoId),
+      invoiceId: entrada.invoiceId,
+      participacaoId: entrada.participacaoId,
+      total: resumo.total,
+      saldoAposDebito: await lerSaldo(),
     });
   } catch (error) {
-    console.error('Erro ao criar/pagar fatura de assinatura:', error);
-    return res.status(500).json({ error: 'Erro interno ao processar fatura' });
+    console.error('Erro ao registrar entrada no grupo:', error);
+    return res.status(500).json({ error: 'Erro interno ao processar a entrada' });
   }
 }

@@ -1,0 +1,17 @@
+{
+  "feature": "006-checkout-caucao",
+  "lockedAt": "2026-11-26 15:03",
+  "total": 5,
+  "files": [
+    {
+      "path": "tests/contract/006-checkout-caucao.contract.test.js",
+      "sha256": "4aff98805ad813b78ccafc6d816cb78d375a8a4267f90b45cbc4bcd8b84db4b3",
+      "tests": 5
+    },
+    {
+      "path": "tests/helpers/db-transacional-memoria.js",
+      "sha256": "0c9ebdf22d5fec42fff83cbd7caaa839751d78a49daee16d6e706ab8d6caf97f",
+      "tests": 0
+    }
+  ]
+}
