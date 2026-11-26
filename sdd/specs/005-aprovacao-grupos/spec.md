@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-26
 
-**Status**: Implementada
+**Status**: Convergida
 
 **Input**: Backlog `V2-05 · P0 · Aprovação, moderação e visibilidade de grupos
 públicos`: estados `em_aprovacao`, `ajustes`, `rejeitado`, `suspenso`,

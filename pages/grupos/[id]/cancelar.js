@@ -137,9 +137,16 @@ export async function getServerSideProps(ctx) {
     };
   }
 
+  // Só o que a página usa (005, C-01): nada de `moderacao` (motivo, histórico, ids de admin)
+  // nem campos internos do grupo para o membro.
   return {
     props: {
-      grupo: JSON.parse(JSON.stringify(grupo)),
+      grupo: {
+        _id: String(grupo._id),
+        nome: grupo.nome || '',
+        descricao: grupo.descricao || '',
+        subtitulo: grupo.subtitulo || '',
+      },
       membroId: String(userId),
     },
   };

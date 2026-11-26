@@ -100,3 +100,11 @@ mensagem, tipo: 'grupo', acao: '/grupos/<id>', lido: false, data, importante }`.
 `action: 'grupo.moderacao.<acao>'`, `actorId` = id do autor ou `'sistema'`
 (automática), `targetCollection: 'grupos'`, `details: { de, para, envio, texto,
 automatico }`. Gravada só depois do `findOneAndUpdate` vencedor.
+
+## Atualização do execute (2026-11-26)
+
+- `acao` do histórico também pode ser `encerrar` (dono encerra grupo aprovado: `ativo` → `cancelado`, `cancelamento.origem: 'dono'`, `motivo` opcional; R-008).
+- `cancelamento.origem: 'dono'` cobre a desistência (`desistir`, `motivo: null`) e o encerramento (`encerrar`, motivo opcional); `'cotea'` cobre `cancelar` e `reprovar_revisao`.
+- O subdocumento `moderacao` não sai para membros nem visitantes: a SSR do detalhe usa a allowlist pública, a de `/grupos/[id]/cancelar` envia só `_id`, `nome`, `descricao` e `subtitulo` (C-01), e `GET /api/meus-grupos` dá ao membro só `cancelamento.origem`.
+- Fila de moderação: visão `aprovados` (`status: 'ativo'`) além de `pendentes` e `revisao` (R-009).
+- O validador `$jsonSchema` está aplicado de fato na coleção `grupos` no banco (R-010); o `moderacao` passa porque o validador não tem `additionalProperties: false`.

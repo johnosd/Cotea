@@ -88,6 +88,8 @@ Migração de preços dos grupos (regra única de preço por vaga): `node --env-
 
 Migração dos CPFs para o cadastro financeiro: `node --env-file=.env.local scripts/migrar-cpf-usuarios.js` mostra o que mudaria; com `--aplicar` grava (CPF em texto puro vira cifrado + hash; CPF inválido vai para `cpfLegadoInvalido`; CPF repetido entre contas aborta). Depois de aplicar, rode `node database/setupDatabase.js` para criar o índice único `cpfHash_unico`.
 
+Migração dos grupos para a moderação (aprovação de grupos): `node --env-file=.env.local scripts/migrar-moderacao-grupos.js` mostra o que mudaria; com `--aplicar` grava (grupos `ativo` e sem status ficam aprovados como legado; outros valores ficam fora do ar e aparecem como "não classificados"). No deploy, rode antes e de novo depois de publicar o código.
+
 ## Estrutura de pastas
 
 ```
@@ -103,7 +105,7 @@ cotea/
 │   │   ├── payments/         # Listagem de pagamentos
 │   │   ├── upload/           # Upload/remoção de imagens (R2)
 │   │   ├── rotinas/          # Disparo das rotinas agendadas (protegido por segredo)
-│   │   └── admin/            # Usuários, auditoria, rotinas e calendário de dias úteis
+│   │   └── admin/            # Usuários, auditoria, rotinas, calendário de dias úteis e moderação de grupos
 │   ├── admin/                # Painel administrativo (role-gated)
 │   ├── assinatura/           # Fluxo de assinatura de grupo
 │   ├── wallet/               # Carteira: saldo, recarga, saque, faturas
@@ -118,7 +120,7 @@ cotea/
 ├── components/
 │   ├── Header.js             # Cabeçalho com busca
 │   ├── FlowStepper.js        # Indicador de etapas
-│   └── admin/                # Abas do painel (Rotinas, datas extras do calendário)
+│   └── admin/                # Abas do painel (Moderação, Rotinas, datas extras do calendário)
 ├── lib/
 │   ├── mongodb.js            # Conexão e helpers de coleção
 │   ├── authz.js              # RBAC (roles e permissões)
@@ -148,7 +150,7 @@ cotea/
 
 O middleware (`middleware.js`) protege todas as rotas não públicas:
 
-- **Rotas públicas:** home, detalhe de grupo, cadastro, verificação, signin, e `/api/rotinas/executar` (agendador; exige `Authorization: Bearer <CRON_SECRET ou ROTINAS_SECRET>`)
+- **Rotas públicas:** home, detalhe de grupo (só grupos aprovados; grupo em aprovação, em ajustes, rejeitado ou cancelado responde "não encontrado" a quem não é dono, membro atual ou staff), cadastro, verificação, signin, e `/api/rotinas/executar` (agendador; exige `Authorization: Bearer <CRON_SECRET ou ROTINAS_SECRET>`)
 - **Rotas autenticadas:** todas as demais (redireciona para `/auth/signin`)
 - **Rotas verificadas:** wallet, assinaturas, admin, meus-grupos (exige `contaValidada`)
 

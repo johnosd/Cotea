@@ -354,7 +354,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
 | 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Convergida | 62/62 tasks | 2026-11-25 |
-| 005-aprovacao-grupos | Aprovação, moderação e visibilidade de grupos públicos | Implementada | 67/67 tasks | 2026-11-26 |
+| 005-aprovacao-grupos | Aprovação, moderação e visibilidade de grupos públicos | Convergida | 69/69 tasks | 2026-11-26 |
 
 ## Melhorias Ad-hoc
 

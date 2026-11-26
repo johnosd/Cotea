@@ -152,3 +152,16 @@ anônimo) e calcular `ehStaff = hasRole(session, PERMISSIONS.GROUPS_TAB)`,
 (`membrosGrupo.findOne({ grupoId, userId, status: { $ne: 'banido' } })`). Se
 `!podeVerGrupo(...)` → 404 / `{ notFound: true }`. Não diferencie "não existe"
 de "não pode ver".
+
+## 6. Atualização do execute (2026-11-26)
+
+Acrescentado depois do plan; a tabela da §2 continua valendo para as demais ações.
+
+| acao | de | para | `$set` além de status | notificar |
+| --- | --- | --- | --- | --- |
+| `encerrar` (dono, R-008) | `ativo` | `cancelado` | `revisaoPendente: false`, `cancelamento {origem: 'dono', motivo: texto opcional (até 1000)}`, `ultimaDecisao` | `membros` (só membros atuais não banidos; o dono não) |
+
+- `ACOES_DONO` = `reenviar`, `desistir`, `encerrar`; `encerrar` está em `ACOES_TEXTO_OPCIONAL`.
+- `notificarEventoModeracao` aceita o destino `membros`; a mensagem ao membro não inclui o motivo do Cotea, e no `encerrar` inclui o motivo opcional do dono.
+- Fila: visão `aprovados` (`status: 'ativo'`, ordem `updatedAt` decrescente) com a ação `cancelar` (R-009).
+- `lib/moderacao.js` importa `./calendario.js` com extensão (o script de migração, em Node ESM, importa o módulo direto).
