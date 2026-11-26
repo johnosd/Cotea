@@ -242,7 +242,7 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | Contratos | 001-005: 25/25 verdes (`npm run test:contrato`); 5 travas íntegras |
 | Gates | `npm test` 427/427; `npm run lint` 0 erros (5 warnings pré-existentes); `npm run build` ok |
 | Banco (`usaComigo`) | Migração aplicada (5 grupos → aprovado/legado), reexecução 0 alterações; índice `status_1_moderacao.enviadoEm_1` criado |
-| Implantação | Nada commitado; falta só o gate de implantação conjunta (US1 com US2/US3) e reexecutar a migração após o deploy |
+| Implantação | Em produção: commit `0bfeff2`, PR #7, merge `67114ac` (2026-11-26), deploy Vercel ok; migração reexecutada após o deploy (0 alterações) |
 ## Riscos e Decisões
 
 <!--
@@ -282,8 +282,9 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | 2026-11-26 | Fase 7 (US5) | Cancelar pelo Cotea na fila (visão nova Aprovados), estado na lista do admin; 127/127 em tests/moderacao | — |
 | 2026-11-26 | Fase 8 (Polish) | RN (18 trocas, sem suspensão), CLAUDE.md, backlog (V2-11/14/15); migração aplicada e índice criado no banco com autorização do usuário; gates lint/test/build verdes | T048 no navegador |
 | 2026-11-26 | T048 (quickstart) | Passos 1-9 no navegador via Playwright (admin = dono); 2 bugs de UI corrigidos (T050 corrida na fila, T051 reenvio do dono-admin); banco limpo (5 grupos, 5 membros, 7 notificações, 16 auditorias, 2 itens de rotina apagados) | Gate de implantação conjunta |
+| 2026-11-26 | Deploy | Commit `0bfeff2`; PR #7 (inclui 004 e correções B-01..B-09) com preview ok; merge `67114ac`; deploy de produção ok; migração pós-deploy 0 alterações; produção: listagem 5 grupos, rotinas 401 sem segredo, fila 307 para login, detalhe sem campos internos | `sdd-converge` |
 
-**PRÓXIMO**: commit; implantar US1-US5 juntas (gate da Phase 8); reexecutar `scripts/migrar-moderacao-grupos.js --aplicar` após o deploy; depois `sdd-converge 005-aprovacao-grupos`.
+**PRÓXIMO**: `sdd-converge 005-aprovacao-grupos`.
 
 ## Arquivos Principais
 

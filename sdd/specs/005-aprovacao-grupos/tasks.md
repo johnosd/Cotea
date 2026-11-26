@@ -265,7 +265,7 @@ description: "Tasks da feature 005-aprovacao-grupos"
 - [X] Fase 5 (US3) concluída
 - [X] Fase 6 (US4) concluída
 - [X] Fase 7 (US5) concluída
-- [ ] Gate de implantação conjunta: não implantar em produção a mudança de criação (`em_aprovacao`, T009) sem as Fases 4 (fila de moderação) e 5 (rotina de aprovação automática registrada em `lib/rotinas/registro.js`) na mesma implantação; caso contrário os grupos novos ficam presos para sempre
+- [X] Gate de implantação conjunta (cumprido: PR #7, merge `67114ac` em 2026-11-26, US1-US5 no mesmo deploy): não implantar em produção a mudança de criação (`em_aprovacao`, T009) sem as Fases 4 (fila de moderação) e 5 (rotina de aprovação automática registrada em `lib/rotinas/registro.js`) na mesma implantação; caso contrário os grupos novos ficam presos para sempre
 - [X] Testes de contrato todos verdes na suíte completa (`npm run test:contrato`, incluindo 001-004) e `check-contract-tests.ps1 -Slug 005-aprovacao-grupos` íntegro
 - [X] `npm test` verde
 - [X] `npm run lint` verde
