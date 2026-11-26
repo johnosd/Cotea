@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { PERMISSIONS, hasRole } from '../../../lib/authz';
 import { precoDoGrupo, VAGAS_DONO } from '../../../lib/preco';
+import { ROTULOS_STATUS_GRUPO, statusEfetivo } from '../../../lib/moderacao';
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -84,7 +85,11 @@ export default function GruposAdmin() {
               const statusDetalhado =
                 grupo.statusDetalhado && grupo.statusDetalhado !== 'em_formacao' ? grupo.statusDetalhado : '';
               const grupoCompleto = capacidade > 0 && membrosAtivos >= capacidade;
-              const statusLabel = grupoCompleto ? 'Completo' : grupo.status === 'inativo' ? 'Inativo' : 'Ativo';
+              // 005: estado de moderação primeiro; "Completo" só para grupo aprovado.
+              const estado = statusEfetivo(grupo);
+              const statusLabel = estado !== 'ativo'
+                ? ROTULOS_STATUS_GRUPO[estado] || estado
+                : grupoCompleto ? 'Completo' : 'Ativo';
               const preco = precoDoGrupo(grupo);
 
               return (
@@ -109,10 +114,10 @@ export default function GruposAdmin() {
                   <td className="border px-4 py-2">
                     <span
                       className={`px-2 py-1 rounded text-xs font-semibold ${
-                        statusLabel === 'Completo'
+                        estado !== 'ativo'
+                          ? 'bg-gray-100 text-gray-700'
+                          : statusLabel === 'Completo'
                           ? 'bg-amber-100 text-amber-700'
-                          : grupo.status === 'inativo'
-                          ? 'bg-red-100 text-red-700'
                           : 'bg-green-100 text-green-700'
                       }`}
                     >
@@ -124,6 +129,8 @@ export default function GruposAdmin() {
                     <Link href={`/admin/grupos/${grupo._id}`} className="text-blue-600 hover:underline">
                       Editar
                     </Link>
+                    {/* Exclusão física só para grupo aprovado (D-07); pendentes usam "Desistir". */}
+                    {estado === 'ativo' && (
                     <button
                       onClick={() => handleExcluir(grupo._id)}
                       disabled={excluindoId === grupo._id}
@@ -131,6 +138,7 @@ export default function GruposAdmin() {
                     >
                       {excluindoId === grupo._id ? 'Excluindo...' : 'Excluir'}
                     </button>
+                    )}
                   </td>
                 </tr>
               );

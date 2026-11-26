@@ -216,12 +216,12 @@ Stubs criados pelo plan (ponto de partida do execute, não travados): `lib/preco
 | ID | Risco/Decisão | Impacto | Mitigação/Encaminhamento |
 | --- | --- | --- | --- |
 | R-001 | Janela de implantação: código novo com grupos ainda sem `precoValido` → todos aparecem "Preco indisponivel" e não cobram | Alto (bloqueia entrada) por minutos | D-10: migrar antes do deploy (código antigo ignora os campos novos e já cobra o `valorPorVaga` novo) e migrar de novo depois. Base de desenvolvimento já migrada em 2026-11-24; produção segue a mesma ordem no deploy |
-| R-002 | Edição de capacidade concorrente com um ingresso pode deixar o grupo 1 acima da capacidade | Baixo (pré-lançamento, edição só por API) | Aceito; a spec pede contagem no momento da gravação. Revisitar em V2-13 (pedido aprovado) |
-| R-003 | `join.js` não recusa grupo sem preço válido; um grupo invalidado entre `pay` e `join` ainda recebe o membro | Baixo (invalidação só pela migração) | Aceito: recusar no join prenderia dinheiro já debitado; checagem fica em `pay.js` e `participar.js` |
-| R-004 | Constitution II pede `normalizeAmount()`; `lib/preco.js` não pode importá-lo (cadeia `lib/wallet.js` → `lib/mongodb.js` quebra no cliente) | Baixo | Normalização equivalente em centavos inteiros dentro de `lib/preco.js`; handlers seguem usando `normalizeAmount` onde já usam. Registrado no Constitution Check |
-| R-005 | Fatura `aguardando_recarga` emitida antes da migração com preço antigo é paga pelo `amount` antigo (sem taxa) | Baixo (nenhuma nessa situação na base hoje) | Comportamento desejado (FR-016: faturas emitidas não mudam) |
+| R-002 | Edição de capacidade concorrente com um ingresso pode deixar o grupo 1 acima da capacidade | Baixo (pré-lançamento, edição só por API) | Resolvido: aceito e confirmado no converge — o PUT conta os participantes logo antes do `updateOne` (`pages/api/grupos/[id].js`). Revisitar em V2-13 (pedido aprovado) |
+| R-003 | `join.js` não recusa grupo sem preço válido; um grupo invalidado entre `pay` e `join` ainda recebe o membro | Baixo (invalidação só pela migração) | Resolvido: aceito e confirmado no converge — `pay.js` e `participar.js` recusam preço inválido; `join.js` não |
+| R-004 | Constitution II pede `normalizeAmount()`; `lib/preco.js` não pode importá-lo (cadeia `lib/wallet.js` → `lib/mongodb.js` quebra no cliente) | Baixo | Resolvido: normalização equivalente em centavos inteiros dentro de `lib/preco.js`; `pay.js` segue usando `normalizeAmount` para fatura existente. Registrado no Constitution Check |
+| R-005 | Fatura `aguardando_recarga` emitida antes da migração com preço antigo é paga pelo `amount` antigo (sem taxa) | Baixo (nenhuma nessa situação na base hoje) | Resolvido: comportamento desejado (FR-016) — `pay.js` cobra fatura existente pelo próprio `invoice.amount` |
 | R-006 | Handlers não tinham teste automatizado (importam `lib/mongodb.js`) | Médio (validação só manual) | Resolvido: `vi.mock` de `next-auth`, `lib/mongodb`, `lib/audit`, `lib/r2` + banco em memória `tests/helpers/db-grupos-memoria.js`; cobre quickstart §2–§3 de API. Passada manual no navegador segue na T025 |
-| R-007 | Script de migração grava números inteiros (ex.: 45) como `int32`, enquanto os handlers gravam `Double` | Baixo (schema aceita `number`; `precoDoGrupo` usa `Number()`) | Aceito; sem impacto de leitura |
+| R-007 | Script de migração grava números inteiros (ex.: 45) como `int32`, enquanto os handlers gravam `Double` | Baixo (schema aceita `number`; `precoDoGrupo` usa `Number()`) | Resolvido: aceito; sem impacto de leitura (`precoDoGrupo` usa `Number()`) |
 
 ## Execution Notes
 
@@ -256,3 +256,51 @@ Stubs criados pelo plan (ponto de partida do execute, não travados): `lib/preco
 - `tests/helpers/db-grupos-memoria.js` devolve **cópias** em `findOne`/`find` (como o driver); sem isso a auditoria 'antes' sai igual ao 'depois'.
 - Antes da migração, todo grupo aparece 'Preco indisponivel' e não cobra (R-001): validar telas só depois de `scripts/migrar-precos-grupos.js --aplicar`.
 - Build com o dev server na porta 3000: copiar o repo para `J:/Cotea/.tmp-build-003` (sem `node_modules`/`.next`/`.git`) e rodar `npx next build` lá; cópia no drive C: com junção falha (webpack não resolve caminho entre drives). Apagar a pasta depois, sair dela antes (o shell trava o diretório).
+
+## Resultado Final
+
+Convergida em 2026-11-24 (`sdd-converge`), sem achados acionáveis.
+
+**O que foi construído**
+
+- `lib/preco.js` é a fonte única da regra (D-01/D-02): `calcularPrecoVaga`,
+  `precoDoGrupo`, `validarNovaCapacidade` e `planejarMigracaoPrecos`, em
+  centavos inteiros com meio-para-cima exato. Nenhuma tela ou handler calcula
+  `T/C` por conta própria.
+- Criação (`pages/api/grupos/index.js`) e edição (`pages/api/grupos/[id].js`)
+  ignoram preço, reservadas e vagas do body, gravam o trio + `precoValido` via
+  `camposPrecoParaGravar` e auditam `T`, `C` e o trio (antes/depois na edição).
+  A edição recusa capacidade abaixo de dono + membros ativos.
+- Cobrança (`pages/api/assinaturas/pay.js`) usa só `precoDoGrupo`; sem preço
+  válido responde 409 `preco_indisponivel` antes de criar fatura. Fatura nova
+  grava `composicao { repasseDono, taxaCotea }`; fatura existente é cobrada
+  pelo próprio `amount`. `participar.js` também recusa preço inválido.
+- Telas (home, página do grupo, lista admin, checkout) leem o preço gravado
+  com a nota "inclui taxa Cotea de 5%" ou "Preco indisponivel"; formulários
+  mostram a prévia (`components/PrevisaoPreco.js`) com a mesma função. O
+  checkout busca o grupo na API e não lê mais `preco` da URL.
+- `scripts/migrar-precos-grupos.js` (dry-run / `--aplicar`) aplicado na base de
+  desenvolvimento: 5 grupos migrados, segunda execução 0 alterados.
+
+**Desvios em relação ao plano original**
+
+- R-006: os handlers ganharam testes automatizados (mocks de `next-auth`,
+  `lib/mongodb`, `lib/audit`, `lib/r2` + banco em memória), que o plano previa
+  só como validação manual. Suíte final: 146/146 (inclui testes de dois
+  bugfixes posteriores).
+- Depois da implementação, dois bugfixes fora desta feature mexeram em
+  arquivos dela sem mudar a regra de preço: `get-grupo-expoe-dados-internos`
+  (o GET público de `/api/grupos/[id]` passou a devolver uma lista fixa de
+  campos, que mantém `valorTotal`, `valorPorVaga`, `repassePorVaga`,
+  `taxaPorVaga` e `precoValido` para o checkout) e
+  `admin-editar-grupo-sem-permissao` (a tela de edição carrega o grupo no
+  servidor com checagem de permissão, em vez de chamar a API pública).
+
+**Decisões que ficaram diferentes do plano**
+
+- Nenhuma decisão invariante (D-01 a D-11) foi alterada.
+
+**Em aberto**
+
+- R-001: produção ainda não migrada. Seguir D-10 no deploy: migrar, fazer o
+  deploy e migrar de novo.

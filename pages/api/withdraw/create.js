@@ -8,8 +8,7 @@ import { obterLedger } from '../../../lib/ledger/servidor';
 import { CATEGORIAS } from '../../../lib/ledger/categorias';
 import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
-
-const CPF_REGEX = /^\d{11}$/;
+import { verificarCadastroFinanceiro } from '../../../lib/cadastro-financeiro-servidor';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -27,14 +26,17 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Conta nao verificada. Confirme seu e-mail para realizar saques.' });
     }
 
+    // 004-cadastro-financeiro (D-03): cadastro financeiro completo antes de qualquer efeito.
+    const verificacao = await verificarCadastroFinanceiro(userId);
+    if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
+
     const amount = normalizeAmount(req.body?.amount);
-    const cpfPixKey = String(req.body?.cpfPixKey || '').replace(/\D/g, '');
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: 'Valor invalido' });
     }
-    if (!CPF_REGEX.test(cpfPixKey)) {
-      return res.status(400).json({ error: 'PIX apenas CPF com 11 digitos' });
-    }
+    // 004-cadastro-financeiro (FR-016, D-07): a chave PIX do saque é sempre o CPF
+    // do perfil; `cpfPixKey` enviado pelo cliente é ignorado e não é mais exigido.
+    const cpfPixKey = verificacao.cpf;
 
     const wallet = await ensureWallet(userId);
     const ledger = await obterLedger();

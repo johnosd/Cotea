@@ -5,8 +5,11 @@ import { authOptions } from '../auth/[...nextauth]';
 import { deleteFromR2, hasR2Config } from '../../../lib/r2';
 import { getSessionUserId } from '../../../lib/wallet';
 import { logAudit } from '../../../lib/audit';
-import { hasRole, isUserBlocked, PERMISSIONS } from '../../../lib/authz';
 import { montarRespostaGrupo } from '../../../lib/grupo-publico';
+import { identificarVisaoGrupo } from '../../../lib/grupo-visao-servidor';
+import {
+  CODIGOS_MODERACAO, adminPodeEditar, donoPodeEditar, grupoEhPublico, podeVerGrupo, statusEfetivo,
+} from '../../../lib/moderacao';
 import {
   CATEGORIAS_PERMITIDAS,
   parseObjectId,
@@ -19,32 +22,24 @@ import {
 } from '../../../lib/grupos-utils';
 import { calcularPrecoVaga, validarNovaCapacidade } from '../../../lib/preco';
 
-// Quem pode ver os campos internos do grupo: staff (aba de grupos) ou dono/admin
-// do grupo. Qualquer falha de sessao cai na visao publica (falha segura).
-async function podeVerCamposInternos(grupoId, grupo, adminIdResolved, req, res, db) {
-  let session = null;
-  try {
-    session = await getServerSession(req, res, authOptions);
-  } catch {
-    return false;
-  }
-  if (!session?.user) return false;
-  if (isUserBlocked(session)) return false;
-  if (hasRole(session, PERMISSIONS.GROUPS_TAB)) return true;
+const NAO_ENCONTRADO = { error: 'Grupo nao encontrado' };
 
-  const requesterId = parseObjectId(getSessionUserId(session));
-  if (!requesterId) return false;
-  const donoId = parseObjectId(adminIdResolved || grupo.admin?.userId);
-  if (donoId && donoId.equals(requesterId)) return true;
-  const membroAdmin = await db.collection('membrosGrupo').findOne({
-    grupoId, userId: requesterId, papel: 'admin', status: { $ne: 'banido' },
-  });
-  return Boolean(membroAdmin);
+const MENSAGENS_EDICAO_BLOQUEADA = {
+  em_aprovacao: 'O grupo esta em aprovacao e nao pode ser editado agora. Aguarde a analise do Cotea.',
+  rejeitado: 'O grupo foi rejeitado e nao pode mais ser editado.',
+  cancelado: 'O grupo foi cancelado e nao pode mais ser editado.',
+};
+
+function edicaoBloqueada(grupo) {
+  return {
+    error: MENSAGENS_EDICAO_BLOQUEADA[statusEfetivo(grupo)] || 'O grupo nao pode ser alterado no estado atual.',
+    codigo: CODIGOS_MODERACAO.EDICAO_BLOQUEADA,
+  };
 }
 
 async function handleGet(grupoId, req, db, res) {
   const grupo = await db.collection('grupos').findOne({ _id: grupoId });
-  if (!grupo) return res.status(404).json({ error: 'Grupo nao encontrado' });
+  if (!grupo) return res.status(404).json(NAO_ENCONTRADO);
 
   let adminIdResolved = null;
   if (grupo.adminId && ObjectId.isValid(grupo.adminId)) adminIdResolved = grupo.adminId;
@@ -52,6 +47,22 @@ async function handleGet(grupoId, req, db, res) {
 
   const membroAdmin = await db.collection('membrosGrupo').findOne({ grupoId, papel: 'admin' });
   if (!adminIdResolved && membroAdmin?.userId) adminIdResolved = membroAdmin.userId;
+
+  // Campos internos: staff (aba de grupos) ou dono/admin do grupo; falha de sessao = visao publica.
+  const visao = await identificarVisaoGrupo({ req, res, db, grupoId, grupo, adminIdResolvido: adminIdResolved });
+
+  // 005-aprovacao-grupos (FR-006, D-06): grupo nao publico so para staff, dono ou membro atual
+  // nao banido; os demais recebem o mesmo 404 de grupo inexistente.
+  if (!grupoEhPublico(grupo)) {
+    const requesterId = parseObjectId(visao.userId);
+    const ehMembroAtual = requesterId
+      ? Boolean(await db.collection('membrosGrupo').findOne({ grupoId, userId: requesterId, status: { $ne: 'banido' } }))
+      : false;
+    if (!podeVerGrupo({ grupo, ehStaff: visao.staff, ehDono: visao.dono, ehMembroAtual })) {
+      return res.status(404).json(NAO_ENCONTRADO);
+    }
+  }
+  const completa = visao.completa;
 
   let adminUser = null;
   if (adminIdResolved && ObjectId.isValid(String(adminIdResolved))) {
@@ -61,19 +72,26 @@ async function handleGet(grupoId, req, db, res) {
     );
   }
 
-  const adminNome = adminUser?.name || adminUser?.nome || grupo.adminNome || membroAdmin?.nome || adminUser?.email || grupo.admin?.nome || 'Administrador';
+  // E-mail do dono so serve de nome de exibicao na visao completa (nunca na publica).
+  const adminNome = adminUser?.name || adminUser?.nome || grupo.adminNome || membroAdmin?.nome
+    || (completa ? adminUser?.email : '') || grupo.admin?.nome || 'Administrador';
   const adminEmail = adminUser?.email || grupo.adminEmail || '';
   const adminAvatar = adminUser?.image || adminUser?.avatar || grupo.adminAvatar || '';
   const membrosAtivos = await db.collection('membrosGrupo').countDocuments({ grupoId, status: { $ne: 'banido' } });
 
-  const completa = await podeVerCamposInternos(grupoId, grupo, adminIdResolved, req, res, db);
   return res.status(200).json(montarRespostaGrupo(grupo, {
     adminIdResolvido: adminIdResolved, adminNome, adminEmail, adminAvatar, membrosAtivos, completa,
   }));
 }
 
 async function handleDelete(grupoId, grupo, requesterId, session, req, db, res) {
-  const resultado = await db.collection('grupos').deleteOne({ _id: grupoId });
+  // D-07: exclusão física só em grupo aprovado (fluxo atual até a V2-14). Pedido pendente usa
+  // `desistir`; rejeitado/cancelado preservam o histórico.
+  if (statusEfetivo(grupo) !== 'ativo') return res.status(409).json(edicaoBloqueada(grupo));
+
+  const resultado = await db.collection('grupos').deleteOne({
+    _id: grupoId, status: grupo.status === undefined ? { $exists: false } : grupo.status,
+  });
   if (resultado.deletedCount === 0) return res.status(404).json({ error: 'Grupo nao encontrado' });
 
   await db.collection('membrosGrupo').deleteMany({ grupoId });
@@ -109,12 +127,19 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
     confiabilidade = '', capacidadeTotal, categoria = '',
     servicoPreAssinado = false, envioAutomaticoAcesso = false,
     filaEsperaAtiva = false, necessitaAnalise = false, observacoesInternas = '',
-    tipoGrupo = 'publico', status = 'ativo', statusDetalhado = 'em_formacao',
+    // status, statusDetalhado e moderacao do body sao ignorados: o estado so muda pelas
+    // acoes de moderacao (005-aprovacao-grupos, FR-003/D-07).
+    tipoGrupo = 'publico',
     beneficios, fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes,
     regras, faq, linkOficial = '',
   } = req.body || {};
 
   const isSystemAdmin = session.user?.systemRole === 'admin';
+
+  // FR-019/D-07: dono edita so em ajustes ou ativo; admin do sistema fora dos estados finais.
+  const podeEditar = isSystemAdmin ? adminPodeEditar(grupo) : donoPodeEditar(grupo);
+  if (!podeEditar) return res.status(409).json(edicaoBloqueada(grupo));
+
   const categoriaEfetiva = isSystemAdmin ? categoria : (grupo.categoria || categoria);
   const acessoEfetivo = isSystemAdmin ? acesso : (grupo.acesso || acesso);
   const tempoEntregaEfetivo = isSystemAdmin ? tempoEntrega : (grupo.tempoEntrega || tempoEntrega);
@@ -154,15 +179,17 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
   const vagasDisponiveisNumero = Math.max(preco.capacidade - capacidadeOk.participantes, 0);
   const camposPreco = camposPrecoParaGravar(preco);
 
+  // Status no filtro: se uma decisao de moderacao mudou o grupo entre a leitura e a gravacao,
+  // a edicao nao se aplica sobre o estado novo (R-006).
   const resultado = await db.collection('grupos').updateOne(
-    { _id: grupoId },
+    { _id: grupoId, status: grupo.status === undefined ? { $exists: false } : grupo.status },
     {
       $set: {
         nome, slug: slugify(nome), capa: imagemFinal, imageUrl: imageUrl || imagemFinal, imageKey,
         ...camposPreco, descricao,
         vagasDisponiveis: new Int32(vagasDisponiveisNumero), subtitulo,
         acesso: acessoEfetivo, tempoEntrega: tempoEntregaEfetivo, confiabilidade,
-        categoria: categoriaEfetiva, tipoGrupo: tipoGrupoEfetivo, status, statusDetalhado,
+        categoria: categoriaEfetiva, tipoGrupo: tipoGrupoEfetivo,
         servicoPreAssinado: servicoPreAssinadoEfetivo, envioAutomaticoAcesso: envioAutomaticoAcessoEfetivo,
         filaEsperaAtiva: filaEsperaAtivaEfetiva, necessitaAnalise: necessitaAnaliseEfetivo,
         observacoesInternas: observacoesInternasEfetiva,
@@ -173,13 +200,17 @@ async function handleUpdate(grupoId, grupo, requesterId, session, req, db, res) 
     }
   );
 
-  if (resultado.matchedCount === 0) return res.status(404).json({ error: 'Grupo nao encontrado' });
+  if (resultado.matchedCount === 0) {
+    return res.status(409).json({
+      error: 'O grupo mudou de estado enquanto voce editava. Atualize a pagina.', codigo: CODIGOS_MODERACAO.CONFLITO,
+    });
+  }
 
   await logAudit({
     action: 'grupo.updated', actorId: String(requesterId), actorEmail: session.user.email,
     targetId: String(grupoId), targetCollection: 'grupos',
     details: {
-      nome, status, categoria: categoriaEfetiva,
+      nome, status: statusEfetivo(grupo), categoria: categoriaEfetiva,
       preco: { antes: resumoPrecoAuditoria(grupo), depois: resumoPrecoAuditoria(camposPreco) },
     },
     ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,

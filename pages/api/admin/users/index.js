@@ -4,6 +4,7 @@ import { authOptions } from '../../auth/[...nextauth]';
 import { getDb } from '../../../../lib/mongodb';
 import { PERMISSIONS, hasRole } from '../../../../lib/authz';
 import { decryptCPF } from '../../../../lib/encryption';
+import { mascararCPF } from '../../../../lib/cpf-mascara';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -32,7 +33,8 @@ export default async function handler(req, res) {
         nome: u.nome || '',
         sobrenome: u.sobrenome || '',
         email: u.email || '',
-        cpf: decryptCPF(u.cpf || ''),
+        // CPF nunca sai completo numa listagem administrativa (RN CPF mascarado)
+        cpf: mascararCPF(decryptCPF(u.cpf || '')),
         systemRole: u.systemRole || 'user',
         isBlocked: Boolean(u.isBlocked),
       }))

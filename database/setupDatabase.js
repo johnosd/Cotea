@@ -50,12 +50,18 @@ async function run() {
     await db.collection("grupos").createIndex({ slug: 1 }, { unique: true });
     await db.collection("grupos").createIndex({ adminId: 1 });
     await db.collection("grupos").createIndex({ status: 1 });
+    await db.collection("grupos").createIndex({ categoria: 1, status: 1 });
+    // fila de moderação e rotina de aprovação automática (005-aprovacao-grupos)
+    await db.collection("grupos").createIndex({ status: 1, "moderacao.enviadoEm": 1 });
 
     // 2) Users
     const usersSchema = await loadSchema("users.schema.json");
     await createCollection("users", usersSchema);
     await db.collection("users").createIndex({ email: 1 }, { unique: true });
     await db.collection("users").createIndex({ username: 1 }, { unique: true, sparse: true });
+    // 004-cadastro-financeiro (D-02): um CPF por conta, pela impressão digital HMAC (o CPF cifrado tem IV aleatório).
+    // Criar depois da migração de CPFs (scripts/migrar-cpf-usuarios.js): CPFs repetidos impedem o índice.
+    await db.collection("users").createIndex({ cpfHash: 1 }, { unique: true, partialFilterExpression: { cpfHash: { $type: "string" } }, name: "cpfHash_unico" });
 
     // 3) Membros do grupo
     const membrosSchema = await loadSchema("membrosGrupo.schema.json");
@@ -64,6 +70,9 @@ async function run() {
     await db.collection("membrosGrupo").createIndex({ userId: 1 });
     await db.collection("membrosGrupo").createIndex({ grupoId: 1, status: 1 });
     await db.collection("membrosGrupo").createIndex({ grupoId: 1, userId: 1 }, { unique: true });
+    await db.collection("membrosGrupo").createIndex({ userId: 1, status: 1 });
+    await db.collection("membrosGrupo").createIndex({ grupoId: 1, papel: 1 });
+    await db.collection("membrosGrupo").createIndex({ grupoId: 1, userId: 1, papel: 1 });
 
     // 4) Logs de acesso do grupo
     const logsSchema = await loadSchema("logsAcessoGrupo.schema.json");
@@ -131,12 +140,14 @@ async function run() {
     await createCollection("invoices", invoicesSchema);
     await db.collection("invoices").createIndex({ userId: 1, grupoId: 1, status: 1, createdAt: -1 });
     await db.collection("invoices").createIndex({ grupoId: 1, createdAt: -1 });
+    await db.collection("invoices").createIndex({ userId: 1, grupoId: 1 });
 
     // 11) WalletTransactions (Ledger)
     const walletTxSchema = await loadSchema("walletTransactions.schema.json");
     await createCollection("walletTransactions", walletTxSchema);
     await db.collection("walletTransactions").createIndex({ walletId: 1, createdAt: -1 });
     await db.collection("walletTransactions").createIndex({ status: 1 });
+    await db.collection("walletTransactions").createIndex({ walletId: 1, type: 1, status: 1 });
     await db.collection("walletTransactions").createIndex(
       { referenceId: 1, type: 1, source: 1 },
       { unique: true, partialFilterExpression: { referenceId: { $type: "string" } } }
@@ -175,6 +186,12 @@ async function run() {
     const sondasSchema = await loadSchema("rotinaSaudeSondas.schema.json");
     await createCollection("rotinaSaudeSondas", sondasSchema);
     await db.collection("rotinaSaudeSondas").createIndex({ criadoEm: 1 }, { expireAfterSeconds: 604800 });
+
+    // 17) Indices de colecoes sem validator aqui (espelham setup-indexes.js; B-09).
+    // rateLimits tambem e criada em runtime por lib/ratelimit.js (mesmas opcoes).
+    await db.collection("rateLimits").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });
+    await db.collection("notificacoesUsuario").createIndex({ userId: 1, lido: 1 });
+    await db.collection("auditLogs").createIndex({ createdAt: -1 });
 
     console.log("\nBanco configurado com sucesso!");
   } catch (error) {

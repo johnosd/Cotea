@@ -19,6 +19,12 @@ vi.mock('../../lib/mongodb', () => ({
   createWallet: vi.fn(),
 }));
 
+// 004-cadastro-financeiro: o gate de cadastro financeiro é testado em tests/cadastro e no contrato 004;
+// aqui o usuário tem cadastro completo para o handler seguir como antes.
+vi.mock('../../lib/cadastro-financeiro-servidor', () => ({
+  verificarCadastroFinanceiro: vi.fn(async () => ({ ok: true, cpf: '52998224725', usuario: {} })),
+}));
+
 const { default: handlerGrupos } = await import('../../pages/api/grupos/index.js');
 const { default: handlerGrupo } = await import('../../pages/api/grupos/[id].js');
 const { logAudit } = await import('../../lib/audit');

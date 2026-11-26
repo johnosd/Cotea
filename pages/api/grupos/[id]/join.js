@@ -2,8 +2,13 @@ import clientPromise from '../../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]';
-import { INVOICE_STATUS, getInvoiceById } from '../../../../lib/invoices';
+import { INVOICE_STATUS, getInvoiceById, markInvoiceRefunded } from '../../../../lib/invoices';
 import { VAGAS_DONO } from '../../../../lib/preco';
+import { motivoGrupoCheio, motivoGrupoIndisponivel } from '../../../../lib/grupo-entrada';
+import { ensureWallet, normalizeAmount } from '../../../../lib/wallet';
+import { obterLedger } from '../../../../lib/ledger/servidor';
+import { CATEGORIAS } from '../../../../lib/ledger/categorias';
+import { logAudit } from '../../../../lib/audit';
 
 const parseObjectId = (valor) => {
   if (typeof valor === 'string' && ObjectId.isValid(valor)) return new ObjectId(valor);
@@ -14,6 +19,59 @@ const parseNumero = (valor, padrao = NaN) => {
   const numero = Number(valor);
   return Number.isFinite(numero) ? numero : padrao;
 };
+
+// B-04: compensacao no servidor quando a fatura ja foi paga mas a entrada e
+// impossivel (grupo indisponivel/cheio). Mesmo operacaoId do /api/assinaturas/refund,
+// entao o estorno que a UI ainda dispara depois e idempotente. Nunca estorna
+// fatura ja vinculada a uma entrada anterior. Falha aqui nao derruba a resposta:
+// devolve false e a UI/refund seguem como rede de seguranca.
+async function estornarFaturaSemVaga({ invoice, userId, motivo, req, session }) {
+  if (invoice.vinculadoEm || invoice.membroId) return false;
+  try {
+    const valor = normalizeAmount(invoice.amount);
+    if (!Number.isFinite(valor) || valor <= 0) return false;
+    const invoiceId = String(invoice._id);
+    const wallet = await ensureWallet(String(userId));
+    const ledger = await obterLedger();
+    const operacao = await ledger.registrarOperacao({
+      operacaoId: `estorno_assinatura:${invoiceId}`,
+      source: 'estorno_assinatura',
+      referenceId: invoiceId,
+      descricao: `Estorno fatura ${invoiceId}`,
+      pernas: [{
+        walletId: wallet._id,
+        type: 'credit',
+        categoria: CATEGORIAS.PESSOAL,
+        valor,
+        grupoId: invoice.grupoId ? String(invoice.grupoId) : null,
+        organizacaoId: null,
+      }],
+      extra: ({ sessao, lancamentos }) => markInvoiceRefunded({
+        invoiceId,
+        walletId: wallet._id,
+        ledgerId: lancamentos[0]._id,
+        refundedAt: new Date(),
+      }, { session: sessao }),
+    });
+    const credito = operacao.lancamentos[0];
+    if (!operacao.criada) {
+      await markInvoiceRefunded({ invoiceId, walletId: wallet._id, ledgerId: credito._id });
+    }
+    await logAudit({
+      action: 'assinatura.refunded',
+      actorId: String(userId),
+      actorEmail: session?.user?.email,
+      targetId: invoiceId,
+      targetCollection: 'invoices',
+      details: { amount: valor, ledgerId: String(credito._id), walletId: String(wallet._id), origem: 'join_sem_vaga', motivo },
+      ip: req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress,
+    });
+    return true;
+  } catch (error) {
+    console.error('Falha ao estornar fatura apos entrada impossivel:', error);
+    return false;
+  }
+}
 
 export default async function handler(req, res) {
   const { id } = req.query;
@@ -145,18 +203,43 @@ export default async function handler(req, res) {
 
     const jaMembro = membros.find((m) => m.userId && m.userId.equals(userObjectId));
     if (jaMembro) {
-      await db.collection('invoices').updateOne(
-        { _id: invoice._id },
-        { $set: { vinculadoEm: new Date(), membroId: jaMembro._id } }
-      );
+      // Nao sobrescreve vinculo existente: reconciliacao so grava em fatura ainda livre.
+      if (!invoice.vinculadoEm && !invoice.membroId) {
+        await db.collection('invoices').updateOne(
+          { _id: invoice._id },
+          { $set: { vinculadoEm: new Date(), membroId: jaMembro._id } }
+        );
+      }
       return res.status(200).json({ message: 'Usuario ja e membro', membro: jaMembro, invoiceId: invoice._id });
+    }
+
+    // Uma fatura paga da direito a uma entrada: se ja foi vinculada a uma
+    // participacao (mesmo encerrada, o DELETE apaga o membro mas o vinculo fica),
+    // nao pode gerar outra. Nao estorna (a entrada anterior consumiu o pagamento).
+    if (invoice.vinculadoEm || invoice.membroId) {
+      return res.status(409).json({
+        error: 'Esta fatura ja foi utilizada em uma entrada. Faca um novo pagamento para entrar novamente.',
+        codigo: 'fatura_ja_utilizada',
+        invoiceId: invoice._id,
+        estornada: false,
+      });
+    }
+
+    const impedimento = motivoGrupoIndisponivel(grupo) || motivoGrupoCheio(grupo, membros);
+    if (impedimento) {
+      const estornada = await estornarFaturaSemVaga({
+        invoice, userId: userObjectId, motivo: impedimento.codigo, req, session,
+      });
+      return res.status(impedimento.http).json({
+        error: impedimento.error,
+        codigo: impedimento.codigo,
+        invoiceId: invoice._id,
+        estornada,
+      });
     }
 
     const capacidadeNum = parseNumero(grupo.capacidadeTotal, NaN);
     const capacidade = Number.isFinite(capacidadeNum) && capacidadeNum > 0 ? capacidadeNum : Infinity;
-    if (capacidade !== Infinity && membros.length >= capacidade) {
-      return res.status(400).json({ error: 'Grupo completo' });
-    }
 
     const agora = new Date();
     const novoMembro = {
@@ -183,6 +266,18 @@ export default async function handler(req, res) {
 
     try {
       const insertResult = await membrosCollection.insertOne(novoMembro);
+
+      // Corrida join x refund: se a fatura foi estornada entre a checagem acima e
+      // o insert, desfaz a entrada (o dinheiro ja voltou) em vez de dar vaga gratis.
+      const faturaAtual = await getInvoiceById(invoice._id);
+      if (!faturaAtual || faturaAtual.status !== INVOICE_STATUS.PAGA) {
+        await membrosCollection.deleteOne({ _id: insertResult.insertedId });
+        return res.status(409).json({
+          error: 'Pagamento estornado; entrada nao registrada',
+          codigo: 'fatura_estornada',
+          invoiceId: invoice._id,
+        });
+      }
 
       const totalMembros = membros.length + 1;
       const capacidadeNum = parseNumero(grupo.capacidadeTotal, NaN);

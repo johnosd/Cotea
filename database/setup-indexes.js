@@ -3,6 +3,10 @@
  * Execute uma vez ao provisionar o banco ou após migrações estruturais:
  *
  *   node database/setup-indexes.js
+ *
+ * Fonte de verdade: database/setupDatabase.js. Este script é um espelho "só índices"
+ * (sem validators/collMod): toda chave aqui DEVE existir lá com as MESMAS opções.
+ * Garantido por tests/bugs/b09-setup-indexes-conflito.test.js.
  */
 
 import { MongoClient } from 'mongodb';
@@ -22,6 +26,9 @@ async function createIndexes() {
 
   console.log('Criando índices...');
 
+  // users — um CPF por conta (004-cadastro-financeiro, D-02); criar depois da migração de CPFs.
+  await db.collection('users').createIndex({ cpfHash: 1 }, { unique: true, partialFilterExpression: { cpfHash: { $type: 'string' } }, name: 'cpfHash_unico' });
+
   // membrosGrupo — suporta o $match inicial em /api/meus-grupos
   await db.collection('membrosGrupo').createIndex({ userId: 1, status: 1 });
 
@@ -40,11 +47,19 @@ async function createIndexes() {
   // grupos — suporta filtros por categoria e status na listagem pública
   await db.collection('grupos').createIndex({ categoria: 1, status: 1 });
 
+  // grupos — suporta a fila de moderação (pendentes por envio) e a rotina de aprovação automática (005)
+  await db.collection('grupos').createIndex({ status: 1, 'moderacao.enviadoEm': 1 });
+
   // walletTransactions — suporta cálculo de saldo em calculateBalances
   await db.collection('walletTransactions').createIndex({ walletId: 1, type: 1, status: 1 });
 
-  // walletTransactions — suporta busca de idempotência por referenceId+source
-  await db.collection('walletTransactions').createIndex({ referenceId: 1, type: 1, source: 1 });
+  // walletTransactions — suporta busca de idempotência por referenceId+source.
+  // Definição IDÊNTICA à de setupDatabase.js (fonte de verdade): único parcial. Com opções
+  // diferentes o MongoDB aborta com IndexKeySpecsConflict (B-09).
+  await db.collection('walletTransactions').createIndex(
+    { referenceId: 1, type: 1, source: 1 },
+    { unique: true, partialFilterExpression: { referenceId: { $type: 'string' } } }
+  );
 
   // walletTransactions — idempotência por operação do ledger segmentado (002, D-05)
   await db.collection('walletTransactions').createIndex(

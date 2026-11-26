@@ -153,6 +153,19 @@ export default async function handler(req, res) {
             valorPago: '$valorPago',
             pagamentoStatus: '$pagamentoStatus',
             pagamentoData: '$pagamentoData',
+            // 005-aprovacao-grupos (FR-022): o dono vê o estado e o texto da última decisão;
+            // o membro só a origem de um cancelamento (o motivo fica com o dono).
+            moderacao: {
+              $cond: [
+                { $eq: ['$papel', 'admin'] },
+                {
+                  ultimaDecisao: '$grupo.moderacao.ultimaDecisao',
+                  cancelamento: '$grupo.moderacao.cancelamento',
+                  revisaoPendente: '$grupo.moderacao.revisaoPendente',
+                },
+                { cancelamento: { origem: '$grupo.moderacao.cancelamento.origem' } },
+              ],
+            },
           },
         },
       ])

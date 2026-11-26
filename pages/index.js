@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import { NOTA_TAXA_COTEA } from '../components/PrevisaoPreco';
 import { precoDoGrupo } from '../lib/preco';
 import { getDb } from '../lib/mongodb';
+import { FILTRO_GRUPOS_PUBLICOS } from '../lib/moderacao';
 
 export default function Home({ gruposIniciais }) {
   const [busca, setBusca] = useState('');
@@ -120,6 +121,8 @@ export async function getServerSideProps() {
   const grupos = await db
     .collection('grupos')
     .aggregate([
+      // 005-aprovacao-grupos (D-06): só grupos públicos (aprovados e não cancelados).
+      { $match: FILTRO_GRUPOS_PUBLICOS },
       {
         $lookup: {
           from: 'membrosGrupo',

@@ -41,6 +41,8 @@ export default function AdminWithdrawals() {
   const isBlocked = Boolean(session?.user?.isBlocked);
   const [saldos, setSaldos] = useState({}); // withdrawalId -> { carregando, erro, resumo }
   const [receita, setReceita] = useState({ carregando: false, erro: '', dados: null });
+  const [cpfsCompletos, setCpfsCompletos] = useState({}); // withdrawalId -> { carregando, erro, cpf }
+  const canVerCpf = useMemo(() => hasRole(session, PERMISSIONS.CPF_COMPLETO_SAQUE), [session]);
 
   const carregarSaldo = async (withdrawalId) => {
     setSaldos((prev) => ({ ...prev, [withdrawalId]: { carregando: true, erro: '', resumo: null } }));
@@ -51,6 +53,19 @@ export default function AdminWithdrawals() {
       setSaldos((prev) => ({ ...prev, [withdrawalId]: { carregando: false, erro: '', resumo: data.resumo } }));
     } catch (err) {
       setSaldos((prev) => ({ ...prev, [withdrawalId]: { carregando: false, erro: err.message, resumo: null } }));
+    }
+  };
+
+  // CPF completo sob demanda, só para o financeiro e só nos saques em aberto.
+  const carregarCpf = async (withdrawalId) => {
+    setCpfsCompletos((prev) => ({ ...prev, [withdrawalId]: { carregando: true, erro: '', cpf: '' } }));
+    try {
+      const res = await fetch(`/api/withdraw/chave-pix?withdrawalId=${encodeURIComponent(withdrawalId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Erro ao carregar CPF do saque');
+      setCpfsCompletos((prev) => ({ ...prev, [withdrawalId]: { carregando: false, erro: '', cpf: data.cpf } }));
+    } catch (err) {
+      setCpfsCompletos((prev) => ({ ...prev, [withdrawalId]: { carregando: false, erro: err.message, cpf: '' } }));
     }
   };
 
@@ -157,7 +172,23 @@ export default function AdminWithdrawals() {
                         Valor: <span className="font-semibold">R$ {Number(w.amount || 0).toFixed(2)}</span>
                       </p>
                       <p className="text-sm text-gray-700">Status: {w.status}</p>
-                      <p className="text-sm text-gray-700">PIX CPF: {w.pixKeyCpf}</p>
+                      <p className="text-sm text-gray-700">
+                        PIX CPF: {cpfsCompletos[w._id]?.cpf || w.pixKeyCpfMascarado || '-'}
+                      </p>
+                      {canVerCpf && (
+                        <div>
+                          {!cpfsCompletos[w._id]?.cpf && (
+                            <button
+                              onClick={() => carregarCpf(w._id)}
+                              className="text-sm text-blue-700 underline disabled:opacity-50"
+                              disabled={cpfsCompletos[w._id]?.carregando}
+                            >
+                              {cpfsCompletos[w._id]?.carregando ? 'Carregando CPF...' : 'Ver CPF completo'}
+                            </button>
+                          )}
+                          {cpfsCompletos[w._id]?.erro && <p className="text-sm text-red-600">{cpfsCompletos[w._id].erro}</p>}
+                        </div>
+                      )}
                       {canVerLedger && (
                         <div className="mt-2">
                           <button

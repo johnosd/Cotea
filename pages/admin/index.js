@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Header from '../../components/Header';
 import { PERMISSIONS, hasRole } from '../../lib/authz';
 import RotinasTab from '../../components/admin/RotinasTab';
+import ModeracaoTab from '../../components/admin/ModeracaoTab';
 
 const ROLES = [
   { value: 'user',    label: 'Usuário' },
@@ -23,16 +24,19 @@ const ROLE_BADGE = {
 const TABS = [
   { id: 'users', label: 'Usuarios', roles: PERMISSIONS.USERS_TAB },
   { id: 'groups', label: 'Grupos', roles: PERMISSIONS.GROUPS_TAB },
+  { id: 'moderacao', label: 'Moderação', roles: PERMISSIONS.GROUPS_TAB },
   { id: 'withdrawals', label: 'Saques', roles: PERMISSIONS.WITHDRAWALS_TAB },
   { id: 'audit', label: 'Auditoria', roles: PERMISSIONS.AUDIT_TAB },
   { id: 'rotinas', label: 'Rotinas', roles: PERMISSIONS.ROTINAS_TAB },
 ];
 
-function UsersTab({ allowed, canChangeRole, currentUserId }) {
+function UsersTab({ allowed, canChangeRole, canCorrectCpf, currentUserId }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState('');
+  // 004-cadastro-financeiro (US5): correção de CPF pelo admin, com motivo obrigatório.
+  const [correcao, setCorrecao] = useState(null); // { id, cpf, motivo, erro }
 
   const load = async () => {
     setLoading(true);
@@ -92,6 +96,27 @@ function UsersTab({ allowed, canChangeRole, currentUserId }) {
       setError(err.message || 'Erro ao alterar papel');
       // reverte o select visualmente recarregando os itens
       load();
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const corrigirCpf = async () => {
+    if (!correcao) return;
+    setActionLoading(`cpf-${correcao.id}`);
+    setCorrecao((c) => ({ ...c, erro: '' }));
+    try {
+      const res = await fetch(`/api/admin/users/${correcao.id}/cpf`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: correcao.cpf, motivo: correcao.motivo }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Erro ao corrigir CPF');
+      setItems((prev) => prev.map((u) => (u._id === correcao.id ? { ...u, cpf: data.cpfMascarado } : u)));
+      setCorrecao(null);
+    } catch (err) {
+      setCorrecao((c) => (c ? { ...c, erro: err.message || 'Erro ao corrigir CPF' } : c));
     } finally {
       setActionLoading('');
     }
@@ -177,6 +202,52 @@ function UsersTab({ allowed, canChangeRole, currentUserId }) {
                         ? 'Desbloquear'
                         : 'Bloquear'}
                     </button>
+                    {canCorrectCpf && !isOwnAccount && (
+                      <button
+                        type="button"
+                        onClick={() => setCorrecao({ id: u._id, cpf: '', motivo: '', erro: '' })}
+                        className="ml-2 px-3 py-1 rounded text-sm font-semibold border border-gray-300 hover:bg-gray-50"
+                      >
+                        Corrigir CPF
+                      </button>
+                    )}
+                    {correcao?.id === u._id && (
+                      <div className="mt-2 space-y-2 max-w-xs" aria-label="Corrigir CPF">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={14}
+                          placeholder="CPF correto"
+                          aria-label="CPF correto"
+                          value={correcao.cpf}
+                          onChange={(e) => setCorrecao((c) => ({ ...c, cpf: e.target.value }))}
+                          className="w-full border rounded px-2 py-1"
+                        />
+                        <input
+                          type="text"
+                          maxLength={500}
+                          placeholder="Motivo (obrigatorio)"
+                          aria-label="Motivo da correcao"
+                          value={correcao.motivo}
+                          onChange={(e) => setCorrecao((c) => ({ ...c, motivo: e.target.value }))}
+                          className="w-full border rounded px-2 py-1"
+                        />
+                        {correcao.erro && <p className="text-xs text-red-600">{correcao.erro}</p>}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={corrigirCpf}
+                            disabled={actionLoading === `cpf-${u._id}` || !correcao.motivo.trim()}
+                            className="px-3 py-1 rounded text-sm font-semibold bg-blue-600 text-white disabled:opacity-50"
+                          >
+                            {actionLoading === `cpf-${u._id}` ? 'Salvando...' : 'Salvar CPF'}
+                          </button>
+                          <button type="button" onClick={() => setCorrecao(null)} className="px-3 py-1 rounded text-sm border">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
@@ -256,6 +327,21 @@ export default function AdminPanel() {
   const { data: session, status } = useSession();
 
   const isAllowed = (roles) => hasRole(session, roles);
+  const podeVerModeracao = hasRole(session, PERMISSIONS.GROUPS_TAB);
+
+  // Contador da aba Moderação (FR-027): pendentes + revisões; a própria aba o atualiza.
+  const [contagensModeracao, setContagensModeracao] = useState(null);
+  const atualizarContagens = useCallback((c) => setContagensModeracao(c || null), []);
+  useEffect(() => {
+    if (!podeVerModeracao) return undefined;
+    let cancelado = false;
+    fetch('/api/admin/moderacao?visao=pendentes')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelado && d?.contagens) setContagensModeracao(d.contagens); })
+      .catch(() => {});
+    return () => { cancelado = true; };
+  }, [podeVerModeracao]);
+  const totalModeracao = (contagensModeracao?.pendentes || 0) + (contagensModeracao?.revisao || 0);
 
   const availableTabs = useMemo(
     () => TABS.filter((t) => isAllowed(t.roles)),
@@ -310,6 +396,7 @@ export default function AdminPanel() {
           <UsersTab
             allowed={isAllowed(PERMISSIONS.USERS_TAB)}
             canChangeRole={isAllowed(PERMISSIONS.ROLE_CHANGE)}
+            canCorrectCpf={isAllowed(PERMISSIONS.CORRIGIR_CPF)}
             currentUserId={session?.user?.id}
           />
         );
@@ -319,6 +406,8 @@ export default function AdminPanel() {
         return <WithdrawalsTab allowed={isAllowed(PERMISSIONS.WITHDRAWALS_TAB)} />;
       case 'audit':
         return <AuditTab allowed={isAllowed(PERMISSIONS.AUDIT_TAB)} />;
+      case 'moderacao':
+        return <ModeracaoTab allowed={isAllowed(PERMISSIONS.GROUPS_TAB)} onContagens={atualizarContagens} />;
       case 'rotinas':
         return <RotinasTab allowed={isAllowed(PERMISSIONS.ROTINAS_TAB)} />;
       default:
@@ -350,6 +439,11 @@ export default function AdminPanel() {
                   }`}
                 >
                   {t.label}
+                  {t.id === 'moderacao' && totalModeracao > 0 && (
+                    <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2" aria-label={`${totalModeracao} pendentes`}>
+                      {totalModeracao}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

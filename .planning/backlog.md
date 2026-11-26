@@ -36,29 +36,13 @@ notificações, conta e auditoria (V2-22 a V2-26).
 
 #### Cadastro, aprovação e entrada
 
-- **V2-04 · P1 · Cadastro financeiro sob demanda e permissões de conta** —
-  Especificar o estado "cadastro financeiro completo" separado de
-  `contaValidada`, exigido só ao concluir o primeiro pagamento/depósito, saque
-  ou criação de grupo (formulário pode ser preenchido antes). Validar CPF com
-  dígito verificador também no perfil; definir se o CPF do PIX é salvo no
-  perfil. Usuário bloqueado não cria grupo, mas paga, participa e saca.
-  Fonte: RN:161-176, 242, 345-368, 1005. Evidência: perfil só confere 11
-  dígitos (`pages/api/atualizarPerfil.js:69-72`), enquanto o PIX valida o
-  algoritmo (`pages/api/pix/simulated/create.js:35-53`); a criação de grupo
-  exige só conta validada (`pages/api/grupos/index.js:66-74`).
+- **V2-04** — especificada em `sdd/specs/004-cadastro-financeiro/spec.md` (ver
+  `## Features`).
 
-- **V2-05 · P0 · Aprovação, moderação e visibilidade de grupos públicos** —
-  Estados `em_aprovacao`, `ajustes`, `rejeitado`, `suspenso`, `cancelado` e
-  estados públicos; fila do admin do sistema com aprovar/rejeitar/pedir ajuste
-  e motivo; reenvio após ajuste; aprovação automática após 2 dias úteis,
-  marcada na auditoria e na fila para revisão posterior, com repasse retido até
-  a revisão (reprovado → suspensão e estorno); suspensão pelo Cotea. Home, API
-  pública e detalhe listam só grupos públicos aprovados e não
-  cancelados/suspensos. O cliente não define `status`. Grupos de organização
-  não passam por aprovação (ver V2-18). Fonte: RN:255-268, 288-311, 370-449.
-  Evidência: a criação aceita `status = 'ativo'` do body
-  (`pages/api/grupos/index.js:61,115`) e a listagem não filtra status
-  (`pages/api/grupos/index.js:18-51`). Depende de V2-01 e V2-11.
+- **V2-05** — especificada em `sdd/specs/005-aprovacao-grupos/spec.md` (ver
+  `## Features`). Decisão da entrevista: **não existe estado suspenso** (grupo
+  é mantido ou cancelado; "suspensão pelo Cotea" vira cancelamento pelo Cotea)
+  e a rejeição é definitiva. V2-14 e V2-15 devem ser revistas com isso.
 
 - **V2-06 · P0 · Checkout v2 com caução e elegibilidade no servidor** — Antes de
   pagar: mensalidade, caução de 1 mensalidade (ambas com 5%), taxa do meio de
@@ -128,6 +112,10 @@ notificações, conta e auditoria (V2-22 a V2-26).
   949, 1093. Evidência: não há entidade nem rotina de repasse em `lib/`,
   `pages/api/` ou `database/`; o pagamento só debita a carteira do membro
   (`pages/api/assinaturas/pay.js:99-107`). Depende de V2-01, V2-02 e V2-09.
+  **Interface da 005 (2026-11-26)**: a retenção estendida deve ler
+  `grupos.moderacao.revisaoPendente === true` (grupo aprovado automaticamente
+  e ainda não revisado); `moderacao.revisao.resultado` diz se a revisão
+  confirmou ou reprovou (reprovado = grupo `cancelado`).
 
 - **V2-12 · P1 · Cancelamento antes do acesso com estorno integral** — Com
   `aguardandoEnvioAcesso: true`, mostrar estorno integral; confirmar retira a
@@ -147,14 +135,22 @@ notificações, conta e auditoria (V2-22 a V2-26).
   Evidência: `PUT` grava preço, capacidade e `status` direto
   (`pages/api/grupos/[id].js:83-152`). Depende de V2-03 e V2-09.
 
-- **V2-14 · P1 · Encerramento direto do grupo e suspensão pelo Cotea** — Dono
+- **V2-14 · P1 · Encerramento direto do grupo e cancelamento pelo Cotea** — Dono
   encerra sem aprovação nem aviso prévio, com motivo obrigatório; prévia do
   impacto por membro; reembolso proporcional automático
   (`mensalidade / dias do ciclo × dias não utilizados`, taxa de 5% devolvida
   proporcionalmente), caução devolvida e valor proporcional aos dias usados ao
   dono; cancelamento lógico com auditoria, sem remoção física; notificação e
-  encerramento de acessos. Admin do sistema suspende grupos (fraude, denúncia,
-  revisão reprovada). Falha ao remover imagem do R2 deve ser registrada.
+  encerramento de acessos. Admin do sistema cancela grupos (fraude, denúncia,
+  revisão reprovada) — não existe suspensão (decisão da 005). Falha ao remover
+  imagem do R2 deve ser registrada.
+  **Parcial (005-aprovacao-grupos, 2026-11-26)**: o cancelamento lógico já
+  existe pelas ações `encerrar` (dono, grupo `ativo`, motivo opcional) e
+  `cancelar` (Cotea, motivo obrigatório), com auditoria e notificação, sem
+  estorno; o `PUT` não aceita mais `status`; o `DELETE` físico só vale em grupo
+  `ativo`. Restam: motivo obrigatório do dono, prévia de impacto, reembolso
+  proporcional, devolução de caução, encerramento de acessos, remover o `DELETE`
+  físico e registrar a falha do R2.
   Fonte: RN:702-740, 262, 782, 1030-1033. Evidência: `DELETE` remove grupo e
   membros fisicamente (`pages/api/grupos/[id].js:55-80`), o `PUT` aceita
   `status` livre (`:90,143`) e a falha do R2 vira só `console.warn` (`:67-69`).
@@ -167,7 +163,7 @@ notificações, conta e auditoria (V2-22 a V2-26).
   evidências; participação `em_disputa` e bloqueio automático do recebível;
   dono tem 3 dias para responder; suporte investiga e registra recomendação;
   admin do sistema decide (improcedente, parcial, integral, risco alto com
-  suspensão) e executa o estorno em até 7 dias; o Cotea julga também as de
+  cancelamento do grupo pelo Cotea — não existe suspensão, ver 005) e executa o estorno em até 7 dias; o Cotea julga também as de
   organização. Encerramento pelo dono não gera disputa. Fonte: RN:742-788,
   231, 215. Evidência: não há rotas, telas nem coleções de reclamação/disputa.
   Depende de V2-01, V2-02 e V2-11.
@@ -194,6 +190,10 @@ notificações, conta e auditoria (V2-22 a V2-26).
   a listagem devolve o documento cru, inclusive para suporte
   (`pages/api/withdraw/list.js:22-34`), e a tela mostra `pixKeyCpf` cifrado
   (`pages/admin/withdrawals.js:104`). Depende de V2-02 e V2-04.
+  **Parcial (004-cadastro-financeiro, 2026-11-25)**: a chave PIX já é sempre o CPF
+  do perfil (o cliente não envia mais chave) e o saque exige cadastro financeiro
+  completo; o CPF da listagem já sai mascarado (B-03); a solicitação já é
+  auditada (`withdrawal.requested`, 002). Restam mínimo de R$ 5,00, taxa e prazo.
 
 - **V2-18 · P2 · Depósito PIX v2** — Mínimo R$ 5,00; taxa do provedor repassada
   e exibida antes de criar o pagamento; cadastro financeiro completo no 1º
@@ -277,69 +277,12 @@ notificações, conta e auditoria (V2-22 a V2-26).
 
 ### Bugs atuais separados das features v2
 
-Revalidados em 2026-11-20 contra o código atual. Tratar via `sdd-bugfix`; os
-P0 devem ser corrigidos antes de depender do checkout v2.
-
-- **[Bug] B-01 · P0 · Entrada sem pagamento** — `POST /api/grupos/[id]/participar`
-  insere membro sem fatura paga para qualquer usuário validado
-  (`pages/api/grupos/[id]/participar.js:11-82`), contrariando o fluxo 7
-  (RN:485-545). Remover ou restringir a rota; a correção definitiva vem em V2-06.
-- **[Bug] B-02 · P0 · Estorno sem cancelamento** — o usuário pode chamar
-  `POST /api/assinaturas/refund` para qualquer fatura própria paga e receber o
-  crédito sem sair do grupo nem passar por cancelamento/disputa
-  (`pages/api/assinaturas/refund.js:21-105`). Corrigir antes de liberar V2-12 e
-  V2-15.
-- **[Bug] B-03 · P1 · CPF aberto em listagens internas** — a API de usuários
-  permite `support` e devolve o CPF descriptografado integral
-  (`lib/authz.js:12`, `pages/api/admin/users/index.js:24,35`), exibido em
-  `pages/admin/index.js:134`; a listagem de saques devolve o documento cru,
-  inclusive a `support` (`pages/api/withdraw/list.js:22-34`). Regra: CPF sempre
-  mascarado; completo só para o financeiro na aprovação de saque (RN:1006).
-- **[Bug] B-04 · P0 · Pagamento de grupo indisponível sem compensação no servidor**
-  — `pay` consulta só nome e preço, sem status/capacidade
-  (`pages/api/assinaturas/pay.js:46-62`); `join` só bloqueia grupo cheio depois
-  da fatura paga (`pages/api/grupos/[id]/join.js:124-158`) e não verifica status;
-  o estorno da falha depende da UI. Preservar a reconciliação de pagamentos já
-  feitos.
-- **[Bug] B-05 · P1 · Usuário bloqueado consegue criar grupo** — a criação checa
-  só `contaValidada` (`pages/api/grupos/index.js:66-68`), mas a regra proíbe
-  criação de grupos por usuário com `isBlocked` (RN:242, 1005). Cuidar para não
-  bloquear pagamento, participação e saque, que continuam permitidos.
-
-- **[Bug] B-06 · P1 · Suspeita: leitura de `.value` em `findOneAndUpdate` com
-  driver 6.16** — no `mongodb` v6, `findOneAndUpdate` retorna o documento
-  direto (sem `{ value }`), mas `pages/api/admin/users/[id]/block.js:37-51`,
-  `pages/api/withdraw/approve.js:58,82`, `pages/api/withdraw/reject.js:55,79` e
-  `lib/invoices.js:60,77,95` leem `.value`. Efeito provável: bloqueio responde
-  404 após gravar e aprovar/rejeitar saque responde 400 após confirmar o
-  lançamento. Não reproduzido — achado no `sdd-plan` da 001 (2026-11-20).
-  **Parcial (002-ledger-segmentado, 2026-11-24)**: resolvido em
-  `withdraw/approve.js` e `withdraw/reject.js` (agora via `liquidarReserva` em
-  `lib/ledger/saque.js`, sem `.value`). Restam `pages/api/admin/users/[id]/block.js`
-  e `lib/invoices.js` (`markInvoicePaid`/`AwaitingTopUp`/`Refunded`; as rotas
-  caem no fallback `invoice._id`/status fixo na resposta).
-
-- **[Bug] B-07 · P1 · Hooks React chamados condicionalmente nas telas de grupo
-  do admin** — `npx eslint .` acusa 21 erros em `pages/admin/grupos/[id].js`
-  (`useState`/`useMemo`/`useEffect` depois de retorno antecipado, além de prop
-  duplicada na linha 381) e 1 em `pages/admin/grupos/novo.js:80` (`useEffect`
-  condicional). Pode causar erro de render ao alternar estados de sessão.
-  Achado no `sdd-execute` da 001 (2026-11-20); tratar via `sdd-bugfix`.
-  **Resolvido em 2026-11-24** (desvio T034 da 001, aprovado pelo usuário):
-  retornos antecipados movidos para depois dos hooks em `[id].js` e `novo.js`,
-  `className` duplicada removida; regressão confirmada em navegador (antes:
-  "Rendered more hooks" nas duas telas; depois: sem erro).
-- **[Bug] B-08 · P2 · `npm run lint` não roda** — `next lint` (Next 14) não
-  reconhece o `eslint.config.mjs` em formato flat e abre um prompt interativo;
-  usar `npx eslint .` até migrar o script. Achado no `sdd-execute` da 001
-  (2026-11-20). **Resolvido em 2026-11-24** (T034): `lint` → `eslint .` e
-  `ignores` de `.next/` no `eslint.config.mjs`.
-
-- **[Bug] B-09 · P3 · `database/setup-indexes.js` conflita com `setupDatabase.js`**
-  — cria `walletTransactions { referenceId, type, source }` sem `unique`/parcial,
-  mas `setupDatabase.js` já cria o mesmo índice como único parcial; o script
-  aborta com `IndexKeySpecsConflict` (code 86) e não cria os índices seguintes.
-  Achado no `sdd-execute` da 001 (2026-11-20).
+Nenhum bug aberto. B-01 a B-06 e B-09 (mais dois derivados do checkout) são
+rastreados em `sdd/bugs/` (ver `## Bugs`), todos `verified` em 2026-11-25. B-07
+(hooks condicionais em `pages/admin/grupos/[id].js` e `novo.js`) e B-08
+(`npm run lint` não rodava) foram resolvidos no desvio T034 da
+`001-rotinas-agendadas` (2026-11-24) e reconferidos em 2026-11-25: `eslint` sem
+erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 
 ### Decisões a esclarecer em `sdd-specify`
 
@@ -354,12 +297,20 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 - Calendário de feriados para "dias úteis" (aprovação automática e saque) —
   decidir em V2-01.
 - O que "membros ativos são tratados pelo suporte" significa financeiramente
-  quando o grupo é suspenso (RN:262, 440).
+  quando o grupo é cancelado pelo Cotea (antes "suspenso"; RN estados de grupo e
+  Fluxo 5). A 005 só avisa os membros; o estorno automático fica para V2-14/V2-15.
 - Corrigir a descrição do comportamento atual em RN:631-634: o `DELETE` apaga o
   documento do membro, não o marca como `banido`
   (`pages/api/grupos/[id]/join.js:56`).
 - Grupo "pré-aprovado" (RN:443-445) e gateway PIX real com webhook (RN:817-819)
   são possibilidades futuras, não features v2 confirmadas.
+- Índice único `walletTransactions { referenceId, type, source }` (parcial, em
+  `database/setupDatabase.js`): pode colidir com a primeira operação multi-perna
+  do ledger (ex.: crédito ao dono + `receita_taxa` no repasse, V2-11), já que
+  todas as pernas compartilham `source`/`referenceId`. A idempotência já é
+  garantida por `operacaoId` único. Avaliar torná-lo não único no `sdd-plan` da
+  feature que introduzir a operação multi-perna. Achado no bug
+  `b09-setup-indexes-conflito` (2026-11-24).
 
 ### Ajustes pequenos candidatos a `sdd-adhoc`
 
@@ -401,7 +352,9 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | --- | --- | --- | --- | --- |
 | 001-rotinas-agendadas | Rotinas agendadas idempotentes e calendário de dias úteis | Convergida | 49/49 tasks | 2026-11-24 |
 | 002-ledger-segmentado | Ledger segmentado e saldo sacável | Convergência Pendente | 50/51 tasks | 2026-11-24 |
-| 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Implementada | 38/38 tasks | 2026-11-24 |
+| 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
+| 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Convergida | 62/62 tasks | 2026-11-25 |
+| 005-aprovacao-grupos | Aprovação, moderação e visibilidade de grupos públicos | Em Execução | 66/67 tasks | 2026-11-26 |
 
 ## Melhorias Ad-hoc
 
@@ -409,10 +362,21 @@ P0 devem ser corrigidos antes de depender do checkout v2.
 | --- | --- | --- |
 | 2026-11-20 | Auth/login | `/admin` não abria logado em produção: middleware passa `secureCookie` pelo protocolo (cookie `__Secure-` em HTTPS) e `/auth/signin` respeita `callbackUrl` só com caminhos internos (`lib/redirecionamento.js`, teste em `tests/redirecionamento.test.js`) |
 | 2026-11-24 | Auth/login | Logout não permitia trocar de usuário (Google reaproveitava a conta logada): `GoogleProvider` com `authorization.params.prompt = "select_account"` em `pages/api/auth/[...nextauth].js`; sem teste automatizado (fluxo OAuth), validar manualmente |
+| 2026-11-24 | Checkout | Retry do pagamento após estorno dava 409 até recarregar: `pages/assinatura/pagamento.js` agora preserva `codigo`/`estornada` dos erros de `pay`/`join`, descarta o `invoiceId` em `fatura_estornada`/`fatura_ja_utilizada` (com mensagem orientando novo pagamento), não chama o `refund` quando o `join` já estornou no servidor (`estornada: true`) e limpa o `invoiceId` após estorno pelo cliente. Considerado e descartado: emitir fatura nova automaticamente no `pay` (cobraria sem intenção explícita). Validado com `eslint` (limpo), `npx vitest run` (34 arquivos/226 testes) e `npm run build` (ok); sem teste no navegador (o fluxo de erro exige pagamento real no banco de produção) |
 
 ## Bugs
 
 | Slug | Título | Fase Atual | Veredito/Status | Próximo Passo | Última Atualização |
 | --- | --- | --- | --- | --- | --- |
 | get-grupo-expoe-dados-internos | GET /api/grupos/[id] expõe dados internos sem sessão | Test | verified | Concluído | 2026-11-24 |
-| admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | partial | Concluído (com ressalva) ou reabrir Assess | 2026-11-24 |
+| admin-editar-grupo-sem-permissao | Página de edição de grupo abre para qualquer usuário logado | Test | verified | Concluído | 2026-11-24 |
+| b01-entrada-sem-pagamento | Entrada em grupo sem pagamento via /participar | Test | verified | Concluído | 2026-11-25 |
+| b02-estorno-sem-cancelamento | Estorno sem cancelamento (B-02) | Test | verified | Concluído | 2026-11-25 |
+| b03-cpf-aberto-listagens | CPF aberto em listagens administrativas (B-03) | Test | verified | Concluído | 2026-11-25 |
+| b04-pagamento-grupo-indisponivel | Pagamento de grupo indisponivel sem compensacao no servidor (B-04) | Test | verified | Concluído | 2026-11-25 |
+| b05-bloqueado-cria-grupo | Usuario bloqueado consegue criar grupo (B-05) | Test | verified | Concluído | 2026-11-25 |
+| b-06-leitura-value-findoneandupdate-driver-6x | Leitura de `.value` em `findOneAndUpdate` com driver 6.x (B-06) | Test | verified | Concluído | 2026-11-25 |
+| b09-setup-indexes-conflito | setup-indexes.js conflita com setupDatabase.js (IndexKeySpecsConflict) | Test | verified | Concluído | 2026-11-24 |
+| pay-aceita-fatura-estornada | `pay` aceita invoiceId de fatura estornada | Test | verified | Concluído | 2026-11-25 |
+| join-reusa-fatura-vinculada | join reusa fatura paga ja vinculada | Test | verified | Concluído | 2026-11-25 |
+| ssr-grupo-detalhe-expoe-dados-internos | SSR de /grupos/[id] expõe dados internos e e-mails a qualquer visitante | Test | verified | Concluído | 2026-11-26 |

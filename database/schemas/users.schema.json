@@ -10,7 +10,9 @@
     "username": { "bsonType": "string" },
     "contaValidada": { "bsonType": "bool" },
     "createdAt": { "bsonType": "date" },
-    "cpf": { "bsonType": "string" },
+    "cpf": { "bsonType": "string", "description": "Sempre cifrado (encryptCPF). Travado depois de salvo (004-cadastro-financeiro)." },
+    "cpfHash": { "bsonType": "string", "description": "hashCPF(digitos): HMAC-SHA256 para unicidade; indice unico parcial cpfHash_unico." },
+    "cpfLegadoInvalido": { "bsonType": "string", "description": "Cifrado. CPF antigo que nao passa no digito verificador, movido pela migracao." },
     "endereco": {
       "bsonType": "object",
       "properties": {
@@ -20,7 +22,8 @@
         "bairro": { "bsonType": "string" },
         "rua": { "bsonType": "string" },
         "numero": { "bsonType": "string" },
-        "complemento": { "bsonType": "string" }
+        "complemento": { "bsonType": "string" },
+        "cepConfirmado": { "bsonType": "bool", "description": "CEP encontrado na consulta ao salvar (false = consulta indisponivel)." }
       }
     },
     "isBlocked": { "bsonType": "bool" },

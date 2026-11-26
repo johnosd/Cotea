@@ -1,0 +1,17 @@
+{
+  "feature": "005-aprovacao-grupos",
+  "lockedAt": "2026-11-26 10:52",
+  "total": 5,
+  "files": [
+    {
+      "path": "tests/contract/005-aprovacao-grupos.contract.test.js",
+      "sha256": "2f2800406633b80d747d4fb07a7e15c8f8747a5e6c0d2cd73331ef82e0996177",
+      "tests": 5
+    },
+    {
+      "path": "tests/helpers/db-grupos-memoria.js",
+      "sha256": "85518a4a10d9f6900373c3549514d2fdb6297adc9bd02eb4165e2f6465228ee8",
+      "tests": 0
+    }
+  ]
+}

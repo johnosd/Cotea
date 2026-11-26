@@ -15,11 +15,15 @@ import {
   resumoPrecoAuditoria,
 } from '../../../lib/grupos-utils';
 import { calcularPrecoVaga, VAGAS_DONO } from '../../../lib/preco';
+import { verificarCadastroFinanceiro } from '../../../lib/cadastro-financeiro-servidor';
+import { FILTRO_GRUPOS_PUBLICOS, STATUS_GRUPO, moderacaoInicial } from '../../../lib/moderacao';
 
 async function handleList(db, res) {
   const grupos = await db
     .collection('grupos')
     .aggregate([
+      // 005-aprovacao-grupos (D-06): só grupos públicos (aprovados e não cancelados; sem status = legado ativo).
+      { $match: FILTRO_GRUPOS_PUBLICOS },
       {
         $lookup: {
           from: 'membrosGrupo',
@@ -56,12 +60,14 @@ async function handleCreate(req, res, db) {
   const {
     // valorPorVaga, vagasReservadasAdmin e vagasDisponiveis do body sao ignorados:
     // o preco e as vagas sao sempre calculados no servidor (003-preco-por-vaga, D-04).
+    // status, statusDetalhado e moderacao do body tambem sao ignorados: todo grupo novo nasce
+    // em aprovacao, inclusive o criado por admin do sistema (005-aprovacao-grupos, FR-002/FR-004).
     nome, capa, imageUrl = '', imageKey = '', valorTotal,
     descricao = '', subtitulo = '', acesso = 'imediato', tempoEntrega = '',
     confiabilidade = '', capacidadeTotal, categoria = '',
     servicoPreAssinado = false, envioAutomaticoAcesso = false,
     filaEsperaAtiva = false, necessitaAnalise = false, observacoesInternas = '',
-    status = 'ativo', statusDetalhado = 'em_formacao', tipoGrupo = 'publico',
+    tipoGrupo = 'publico',
     beneficios, fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes,
     regras, faq, linkOficial = '',
   } = req.body || {};
@@ -75,6 +81,17 @@ async function handleCreate(req, res, db) {
 
   const adminUser = await db.collection('users').findOne({ _id: adminId });
   if (!adminUser) return res.status(403).json({ error: 'Administrador nao encontrado' });
+
+  // B-05: usuario bloqueado nao cria grupos (regras-negocio-v2, Bloqueado / Fluxo 18).
+  // O banco e a fonte de verdade: o isBlocked do JWT so e ressincronizado a cada updateAge.
+  // Apenas a criacao e barrada; pagamento, participacao e saque seguem permitidos.
+  if (adminUser.isBlocked === true || session.user.isBlocked === true) {
+    return res.status(403).json({ error: 'Conta bloqueada. Voce nao pode criar grupos. Procure o suporte.' });
+  }
+
+  // 004-cadastro-financeiro (D-03): cadastro financeiro completo antes de qualquer efeito.
+  const verificacao = await verificarCadastroFinanceiro(adminId);
+  if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
 
   const preco = calcularPrecoVaga({ valorTotal, capacidade: capacidadeTotal });
 
@@ -98,6 +115,7 @@ async function handleCreate(req, res, db) {
   const adminNome = adminUser?.nome || adminUser?.name || adminUser?.email || 'Administrador';
   const adminAvatar = adminUser?.image || adminUser?.avatar || '';
 
+  const agora = new Date();
   const novoGrupo = {
     nome, slug: slugify(nome), capa: imagemFinal, imageUrl: imageUrl || imagemFinal, imageKey,
     ...camposPrecoParaGravar(preco), descricao,
@@ -105,11 +123,12 @@ async function handleCreate(req, res, db) {
     servicoPreAssinado: Boolean(servicoPreAssinado), envioAutomaticoAcesso: Boolean(envioAutomaticoAcesso),
     filaEsperaAtiva: Boolean(filaEsperaAtiva), necessitaAnalise: Boolean(necessitaAnalise),
     observacoesInternas: observacoesInternas || '', subtitulo, acesso, tempoEntrega, confiabilidade,
-    categoria, tipoGrupo, status: status || 'ativo', statusDetalhado,
+    categoria, tipoGrupo, status: STATUS_GRUPO.EM_APROVACAO, statusDetalhado: 'em_formacao',
+    moderacao: moderacaoInicial({ agora, ator: { id: adminId } }),
     beneficios: beneficiosParsed, regras: regrasParsed, faq: faqParsed,
     fidelidade: parseFidelidade({ fidelidadePeriodo, fidelidadeRenovacao, fidelidadeObservacoes }),
     linkOficial: (linkOficial || '').trim(),
-    createdAt: new Date(), updatedAt: new Date(),
+    createdAt: agora, updatedAt: agora,
     adminId, adminIdString: String(adminId), adminNome, adminEmail: adminUser?.email || '', adminAvatar,
     admin: { userId: adminId, nome: adminNome, email: adminUser?.email || '', avatar: adminAvatar },
   };
@@ -139,7 +158,7 @@ async function handleCreate(req, res, db) {
   await logAudit({
     action: 'grupo.created', actorId: String(adminId), actorEmail: session.user.email,
     targetId: String(resultado.insertedId), targetCollection: 'grupos',
-    details: { nome: novoGrupo.nome, categoria: novoGrupo.categoria, ...resumoPrecoAuditoria(novoGrupo) },
+    details: { nome: novoGrupo.nome, categoria: novoGrupo.categoria, status: novoGrupo.status, ...resumoPrecoAuditoria(novoGrupo) },
     ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
   });
 

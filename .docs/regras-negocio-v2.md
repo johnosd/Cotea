@@ -96,7 +96,7 @@ da organizacao, valem as mesmas regras:
 - **Nao ha aprovacao previa**, nem do Cotea nem da empresa. O grupo e publicado direto,
   no contexto da organizacao.
 - O Cotea mantem poder de intervencao em fraude, denuncia ou violacao dos termos.
-- O admin da organizacao **nao modera grupos**: gerencia so pessoas (convites, solicitacoes e remocoes). Suspensao e encerramento de grupos fora das regras do dono ficam com o Cotea.
+- O admin da organizacao **nao modera grupos**: gerencia so pessoas (convites, solicitacoes e remocoes). Cancelamento de grupos fora das regras do dono fica com o Cotea (nao existe suspensao de grupo).
 - Alteracao de valor em grupo da organizacao segue o Fluxo 6: **aprovada pelo admin do sistema**, como no publico, mesmo sem aprovacao previa na criacao.
 - As regras financeiras sao identicas as do publico: o funcionario paga, ha caucao de 1
   mensalidade, taxa de 5% do Cotea, repasse retido por 30 dias e saque com as mesmas
@@ -170,10 +170,11 @@ Alvo v2:
 - Pode listar, ver detalhes e iniciar fluxos sensiveis.
 - O cadastro financeiro completo (CPF e dados de pagamento) e exigido **no momento do primeiro pagamento, saque ou criacao de grupo**, e nao antes. O usuario pode navegar e preencher formularios, mas a acao so conclui com o cadastro completo.
 
-Gap de implementacao:
+Implementado (004-cadastro-financeiro):
 
-- Hoje o sistema nao diferencia claramente "conta validada" de "cadastro completo".
-- CPF/endereco existem no perfil, mas nem todos os fluxos exigem completude antes da acao.
+- "Cadastro financeiro completo" e um estado derivado, separado de `contaValidada`: CPF valido (digito verificador) e unico entre contas + endereco valido (CEP com 8 digitos e consultado, UF, cidade, bairro, rua e numero — aceita "S/N").
+- O servidor exige o cadastro completo para **concluir** pagamento de assinatura (por qualquer meio, inclusive saldo), uso de saldo da carteira (Fluxo 16), deposito PIX, saque e criacao de grupo. Navegar e preencher formularios nao exige.
+- Quando falta algo, a propria tela abre um formulario so com os campos pendentes e repete a acao depois de salvar, sem perder o que foi preenchido.
 
 ### Membro
 
@@ -208,7 +209,7 @@ Alvo v2:
 Pode:
 
 - Aprovar ou rejeitar grupos, e revisar os aprovados automaticamente.
-- Suspender grupos.
+- Cancelar grupos aprovados (fraude, denuncia, revisao reprovada), com motivo. Nao existe suspensao: o grupo e mantido ou cancelado.
 - Editar grupos e campos internos.
 - Gerenciar usuarios, bloqueios e roles.
 - Ver auditoria.
@@ -252,20 +253,21 @@ Atual:
 
 Alvo v2:
 
-- **Em aprovacao**: grupo criado aguardando admin do sistema.
-- **Ajustes**: nao publicado; dono recebe motivo para ajustes.
+- **Em aprovacao**: grupo criado aguardando admin do sistema; nao aparece na busca, nao aceita membros e o dono nao edita.
+- **Ajustes**: nao publicado; dono recebe o texto das pendencias, edita e reenvia (novo prazo de 2 dias uteis).
+- **Rejeitado**: estado final; nao volta para a fila, nao pode ser editado nem reenviado.
 - **Aguardando membros**: aprovado e publico, mas ainda nao completou vagas quando o acesso depende de completar o grupo.
 - **Aguardando assinatura**: grupo completou, mas dono ainda precisa contratar/confirmar o servico e liberar acessos, dono tem 5 dias para enviar acessos.
 - **Assinado com vaga**: ativo, pre-assinado ou com acesso imediato, ainda tem vaga.
 - **Fila de espera**: ativo, sem vaga imediata, mas existe saida agendada.
 - **Ativo completo**: ativo, sem vaga.
-- **Suspenso**: retirado da listagem e sem novas entradas por decisao do Cotea (fraude, denuncia, reprovacao em revisao ou risco alto em disputa). Membros ativos sao tratados pelo suporte.
-- **Cancelado**: encerrado logicamente, sem novas entradas.
+- **Cancelado**: encerrado logicamente, sem novas entradas; estado final. Pode vir da desistencia do dono (pedido em aprovacao/ajustes), do encerramento pelo dono (grupo aprovado) ou do **cancelamento pelo Cotea** (fraude, denuncia, reprovacao em revisao ou risco alto em disputa). No cancelamento pelo Cotea, membros ativos sao avisados e tratados pelo suporte.
+- Nao existe estado **Suspenso** (decisao da feature 005): o que antes era suspensao virou cancelamento pelo Cotea.
 
 Gap de implementacao:
 
-- Hoje a criacao salva grupo como ativo, sem aprovacao previa real.
-- Nao ha fluxo completo para rejeicao, suspensao, fila formal ou aguardando assinatura.
+- Implementado (005-aprovacao-grupos): `status` guarda o estado de moderacao (`em_aprovacao`, `ajustes`, `rejeitado`, `ativo` = aprovado e publico, `cancelado`; sem `status` = `ativo` legado) e `moderacao` guarda envio, prazo, revisao pendente e historico. O cliente nunca define `status`.
+- Nao ha fluxo para fila de espera formal ou aguardando assinatura (V2-07, V2-16).
 
 ### Estados de membro no grupo
 
@@ -304,11 +306,11 @@ Fluxo:
 Excecoes:
 
 - Grupo inexistente retorna pagina nao encontrada.
-- Grupo cancelado/suspenso nao deve aparecer na listagem alvo.
+- Grupo nao aprovado (em aprovacao, ajustes, rejeitado) ou cancelado nao aparece na listagem; o detalhe responde pagina nao encontrada para terceiros e continua visivel para o dono, membros atuais e staff.
 
 Gap de implementacao:
 
-- A home atual nao filtra explicitamente por status publico/aprovado/cancelado.
+- Implementado (005-aprovacao-grupos): home, `GET /api/grupos` e detalhe filtram por grupo aprovado e nao cancelado.
 
 ## Fluxo 2: login, cadastro e verificacao
 
@@ -353,19 +355,20 @@ Fluxo:
 1. Usuario acessa perfil.
 2. Sistema carrega dados do usuario.
 3. Usuario edita dados pessoais.
-4. Usuario informa CPF e endereco quando necessario.
-5. Sistema valida campos obrigatorios, formato de username, CPF com 11 digitos e endereco.
-6. Sistema salva dados e criptografa CPF.
+4. Usuario informa CPF e endereco quando necessario (no perfil ou no formulario que aparece dentro do checkout, recarga, saque, uso de saldo ou criacao de grupo).
+5. Sistema valida campos obrigatorios, formato de username, CPF pelo digito verificador, CPF unico entre contas e endereco (CEP consultado; com CEP encontrado, cidade e UF sao as do CEP; CEP geral exige rua e bairro digitados; com a consulta indisponivel, aceita o formato valido e marca "CEP nao confirmado").
+6. Sistema salva o CPF sempre criptografado (com impressao digital para unicidade) e o endereco.
+7. Depois de salvo, o CPF fica **travado**: o usuario o ve mascarado (`***.123.456-**`) e nao pode altera-lo nem apaga-lo; a correcao e feita so pelo admin do sistema, com motivo registrado na auditoria (sem o CPF). O endereco pode ser trocado, mas nao pode voltar a ficar incompleto.
 
 Alvo v2:
 
 - Para pagar via PIX, sacar, receber repasse ou criar grupo (publico ou de organizacao), o CPF deve estar presente e valido.
 - Para saque, a chave PIX deve ser sempre o CPF do proprio usuario, sem excecao (Fluxo 18).
 
-Gap de implementacao:
+Implementado (004-cadastro-financeiro):
 
-- O checkout de assinatura pede CPF para PIX, mas nao necessariamente salva esse CPF no perfil.
-- O sistema atual valida tamanho do CPF no perfil, mas nao aplica algoritmo de CPF nesse endpoint.
+- O PIX (checkout e recarga) e o saque nao pedem CPF: usam sempre o CPF do perfil; um CPF enviado pela tela e ignorado.
+- O perfil aplica o digito verificador e a unicidade do CPF. CPFs antigos sao migrados: texto puro vira criptografado; CPF que nao passa no digito verificador conta como ausente e o usuario informa um valido.
 
 ## Fluxo 4: criacao de grupo pelo dono
 
@@ -410,8 +413,7 @@ Regras:
 
 Gap de implementacao:
 
-- Hoje o grupo e criado como `ativo`.
-- Hoje nao ha fila de aprovacao previa implementada.
+- Implementado (005-aprovacao-grupos): todo grupo novo, inclusive o criado por admin do sistema, nasce **Em aprovacao**; `status` e `statusDetalhado` enviados pela tela sao ignorados. Ainda nao ha organizacoes (V2-19): por enquanto todo grupo passa pela fila.
 - Resolvido (feature 003): a formula unica (com taxa de 5%) vale na criacao, na edicao, na cobranca e na exibicao; os grupos existentes sao recalculados pela migracao `scripts/migrar-precos-grupos.js`.
 - A tela de edicao ainda nao permite alterar valor total nem capacidade (so a API); a alteracao com aprovacao fica para V2-13.
 
@@ -429,22 +431,25 @@ Fluxo alvo:
 3. Admin aprova, rejeita ou pede ajuste.
 4. Se aprovar:
    - grupo vira publico;
-   - status inicial vira `aguardando_membros` ou `assinado_com_vaga`, conforme tipo de acesso e pre-assinatura;
+   - status inicial vira `aguardando_membros` ou `assinado_com_vaga`, conforme tipo de acesso e pre-assinatura (hoje: `ativo`; os estados publicos detalhados ficam para a V2-07);
    - dono recebe notificacao.
 5. Se rejeitar:
    - grupo nao aparece publicamente;
    - dono recebe motivo;
-   - grupo pode ser editado e reenviado.
+   - a rejeicao e **definitiva**: o grupo nao pode ser editado nem reenviado (o dono cria outro grupo).
 6. Se pedir ajuste:
-   - grupo fica pendente de correcao;
-   - dono recebe lista de pendencias.
+   - grupo fica pendente de correcao (Ajustes);
+   - dono recebe o texto das pendencias, edita e reenvia; o reenvio volta o grupo para a fila com novo prazo.
+7. O admin pode tambem **cancelar pelo Cotea** um grupo aprovado, com motivo obrigatorio.
+8. O dono pode desistir de um pedido em aprovacao ou em ajustes (o grupo fica cancelado).
+9. Somente o admin do sistema decide; o suporte consulta a fila em leitura.
 
 Prazo e aprovacao automatica:
 
-- O admin do sistema tem **ate 2 dias uteis** para aprovar, rejeitar ou pedir ajuste.
+- O admin do sistema tem **ate 2 dias uteis** para aprovar, rejeitar ou pedir ajuste. O prazo vence no fim (23:59, horario de Brasilia) do 2o dia util apos o dia do envio e recomeca a cada reenvio; o tempo em ajustes nao conta.
 - Vencido o prazo sem decisao, o grupo e **aprovado automaticamente** e segue o fluxo de aprovado.
 - Grupo aprovado automaticamente fica marcado na auditoria e na fila do admin, para revisao posterior.
-- **Salvaguarda**: o grupo aprovado automaticamente entra no ar, mas o **repasse ao dono fica retido alem dos 30 dias ate o Cotea revisar o grupo**. Aprovado na revisao, o repasse segue a regra normal; reprovado, o grupo e suspenso e os membros sao estornados conforme o caso.
+- **Salvaguarda**: o grupo aprovado automaticamente entra no ar, mas o **repasse ao dono fica retido alem dos 30 dias ate o Cotea revisar o grupo**. Aprovado na revisao, o repasse segue a regra normal; reprovado, o grupo e **cancelado pelo Cotea** e os membros sao avisados e tratados pelo suporte (estorno automatico fica para V2-14/V2-15).
 - Esta regra vale so para grupos publicos; grupos de organizacao nao passam por aprovacao previa.
 
 Regra futura:
@@ -453,7 +458,7 @@ Regra futura:
 
 Gap de implementacao:
 
-- Nao ha endpoint/tela especifica de aprovacao.
+- Implementado (005-aprovacao-grupos): fila na aba "Moderacao" do `/admin` (em aprovacao, revisao posterior e aprovados), rotina `aprovacao-automatica-grupos`, auditoria `grupo.moderacao.<acao>` e notificacoes internas ao dono (e aos membros no cancelamento). A retencao efetiva do repasse enquanto `moderacao.revisaoPendente` for verdadeiro fica para a V2-11. E-mails desses eventos ficam para a V2-24.
 
 ## Fluxo 6: edicao e alteracao de grupo
 
@@ -466,7 +471,7 @@ Atual:
 
 - Dono/admin do grupo pode alterar grupo por API se for membro com `papel: admin`.
 - Varios campos sensiveis so ficam editaveis para `systemRole: admin` na tela de edicao.
-- Dono nao admin do sistema pode cancelar grupo pela tela de edicao.
+- Dono nao admin do sistema pode cancelar grupo pela tela de edicao (desde a 005, pela acao `desistir` em aprovacao/ajustes ou `encerrar` em grupo aprovado; nunca mudando `status` pelo `PUT`). Em ajustes, o dono edita o conteudo e reenvia pela mesma tela.
 
 Alvo v2:
 
@@ -542,7 +547,7 @@ Excecoes:
 - Grupo completo e sem saida agendada (sem vaga futura): bloquear entrada antes de pagamento.
 - Fatura paga mas entrada falhou: estorno automatico.
 - Usuario ja membro: nao duplicar membro nem cobrar novamente.
-- Usuario bloqueado: negar.
+- Usuario bloqueado: pode pagar e entrar como membro (ver estado "Bloqueado" do usuario); so nao cria grupos.
 - Conta nao validada: redirecionar para verificacao.
 
 Gap de implementacao:
@@ -777,7 +782,7 @@ Fluxo alvo:
    - improcedente: disputa encerra e repasse pode ser liberado;
    - procedente parcial: reembolso proporcional;
    - procedente integral: estorno integral;
-   - risco alto/fraude: grupo suspenso e admin do sistema assume tratativa.
+   - risco alto/fraude: grupo cancelado pelo Cotea e admin do sistema assume tratativa.
 8. Sistema registra auditoria e comunica as partes.
 
 Regras:
@@ -805,7 +810,7 @@ Fluxo atual:
 
 1. Usuario acessa carteira.
 2. Clica em adicionar saldo.
-3. Informa valor e CPF.
+3. Informa o valor (o CPF do PIX vem do cadastro financeiro; se faltar, a tela pede o cadastro antes).
 4. Sistema cria pagamento PIX simulado em `payments` com status `pending`.
 5. Usuario confirma pagamento simulado.
 6. Sistema marca pagamento como confirmado.
@@ -831,6 +836,7 @@ Pre-condicoes:
 
 - Usuario autenticado.
 - Saldo disponivel suficiente.
+- Usuario tem cadastro financeiro completo (004-cadastro-financeiro: uso de saldo e um pagamento).
 
 Fluxo:
 
@@ -876,13 +882,13 @@ Pre-condicoes:
 
 - Usuario autenticado e validado.
 - Usuario possui saldo disponivel.
-- Usuario informa chave PIX do tipo CPF, que deve ser o CPF do proprio usuario.
+- A chave PIX e sempre o CPF do cadastro financeiro do proprio usuario; a tela mostra o CPF mascarado e nao pede chave.
 - Usuario tem cadastro financeiro completo.
 
 Fluxo atual:
 
 1. Usuario acessa "Sacar".
-2. Informa valor e CPF.
+2. Informa o valor (a chave PIX e o CPF do cadastro financeiro, exibido mascarado).
 3. Sistema valida saldo disponivel dentro da mesma transacao que reserva o valor (carteira travada; dois pedidos simultaneos acima do disponivel: so um passa).
 4. Sistema cria withdrawal com status `requested`.
 5. Sistema cria debito no ledger com status `blocked` na categoria `pessoal` ("saque em andamento"), na mesma operacao do withdrawal.
@@ -1149,7 +1155,7 @@ automatica, saque, disputas, faturas, convites, repasse e grupos
 18. Mascarar CPF nas telas administrativas e liberar o CPF completo so ao financeiro na aprovacao de saque.
 19. Aplicar o limite de 500 caracteres nas mensagens do dono aos membros.
 20. Implementar exclusao de conta com anonimizacao e checagem de pendencias.
-21. Implementar aprovacao automatica de grupo publico em 2 dias uteis, com repasse retido ate a revisao.
+21. Implementar aprovacao automatica de grupo publico em 2 dias uteis, com repasse retido ate a revisao (aprovacao e revisao implementadas na 005; retencao do repasse na V2-11).
 22. Registrar o aceite de transparencia da organizacao no ingresso.
 
 ## Cenarios de aceite do documento v2
@@ -1158,7 +1164,7 @@ automatica, saque, disputas, faturas, convites, repasse e grupos
 - Usuario entende quando precisa validar conta e quando precisa completar dados financeiros.
 - Membro entende quanto paga, por que paga caucao, quando recebe acesso e como cancela.
 - Dono entende como cria grupo, como ele e aprovado, quando envia acesso e quando recebe repasse.
-- Admin entende quando aprova, bloqueia, rejeita, suspende ou intervem.
+- Admin entende quando aprova, bloqueia, rejeita, cancela ou intervem.
 - Financeiro entende como aprovar/rejeitar saques.
 - Suporte entende quando abrir disputa e o que bloquear.
 - Implementador consegue identificar claramente quais regras ja existem e quais sao gaps.

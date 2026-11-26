@@ -6,6 +6,7 @@ import { obterLedger } from '../../../lib/ledger/servidor';
 import { CATEGORIAS } from '../../../lib/ledger/categorias';
 import { SaldoInsuficienteError } from '../../../lib/ledger/ledger';
 import { logAudit } from '../../../lib/audit';
+import { verificarCadastroFinanceiro } from '../../../lib/cadastro-financeiro-servidor';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -19,6 +20,10 @@ export default async function handler(req, res) {
     if (!session || !userId) {
       return res.status(401).json({ error: 'Nao autenticado' });
     }
+
+    // 004-cadastro-financeiro (D-03): cadastro financeiro completo antes de qualquer efeito.
+    const verificacao = await verificarCadastroFinanceiro(userId);
+    if (!verificacao.ok) return res.status(verificacao.http).json(verificacao.body);
 
     const amount = normalizeAmount(req.body?.amount);
     const description = (req.body?.description || '').trim();
