@@ -44,21 +44,13 @@ notificações, conta e auditoria (V2-22 a V2-26).
   é mantido ou cancelado; "suspensão pelo Cotea" vira cancelamento pelo Cotea)
   e a rejeição é definitiva. V2-14 e V2-15 devem ser revistas com isso.
 
-- **V2-06 · P0 · Checkout v2 com caução e elegibilidade no servidor** — Antes de
-  pagar: mensalidade, caução de 1 mensalidade (ambas com 5%), taxa do meio de
-  pagamento, total de hoje, próximo vencimento e prazo de acesso. Validar no
-  servidor, antes de cobrar: grupo aprovado, vaga (ou fila), não ser dono, não
-  ser membro, pertencer à organização, trava de saldo (V2-20). Pagamento,
-  criação da participação e caução bloqueada em operação atômica, com estorno
-  automático no servidor se a entrada falhar. Persistir a declaração de
-  relacionamento (amigo, família, conhecido, desconhecido). Fonte: RN:485-545,
-  1075-1089. Evidência: `pay` cobra só `valorPorVaga` e não checa
-  status/capacidade (`pages/api/assinaturas/pay.js:15-20,46-62`); `join` grava
-  `temCaucao: false` (`pages/api/grupos/[id]/join.js:166`); a UI diz
-  "mensalidade + caução" com o preço simples e taxa PIX fixa de R$ 0,68
-  (`pages/assinatura/pagamento.js:40-49,293`); a etapa de relacionamento só
-  exibe um rádio fixo, sem gravar (`pages/assinatura/relacionamento.js:39-41`).
-  Depende de V2-02 e V2-03. Absorve os bugs B-01 e B-04.
+- **V2-06** — especificada em `sdd/specs/006-checkout-caucao/spec.md` (ver
+  `## Features`). Decisões da entrevista: a caução volta integralmente em toda
+  saída até V2-09/V2-10; o ciclo conta do envio do acesso; taxa PIX R$ 0,00
+  enquanto simulado; mensalidade de grupo "após completar" fica retida até
+  lotar; repasse e taxa de 5% ficam na V2-11. Fila (V2-16), organização e trava
+  de saldo (V2-19 a V2-21) ficaram de fora e entram na elegibilidade quando
+  forem especificadas.
 
 - **V2-07 · P1 · Estados de grupo/participação e grupos `apos_completar`** —
   Modelar estados de grupo (aguardando membros, aguardando assinatura com 5 dias
@@ -71,6 +63,9 @@ notificações, conta e auditoria (V2-22 a V2-26).
   `statusDetalhado` `em_formacao`/`ativo`, alterado só ao completar
   (`pages/api/grupos/[id]/join.js:160-194`); sem prazo de 30 dias. Depende de
   V2-01, V2-02 e V2-06.
+  **Interface da 006 (2026-11-26)**: a retenção da mensalidade, a liberação ao
+  lotar e a devolução na saída já estão especificadas na 006; restam os estados
+  detalhados e o estorno automático em 30 dias.
 
 - **V2-08 · P1 · SLA de envio de acesso com estorno automático e prova de
   entrega** — Prazo de 5 dias corridos após pagamento/ativação aplicável;
@@ -103,6 +98,9 @@ notificações, conta e auditoria (V2-22 a V2-26).
   `DELETE` apaga o membro na hora (`pages/api/grupos/[id]/join.js:30-80`), sem
   ciclo, caução ou fidelidade; `fidelidade` só é gravada no membro admin
   (`pages/api/grupos/index.js:129-143`). Depende de V2-02 e V2-09; alimenta V2-15.
+  **Interface da 006 (2026-11-26)**: substituir a devolução transitória (caução
+  integral em toda saída) pelas regras que o membro aceitou na entrada; usar a
+  fidelidade gravada na participação.
 
 - **V2-11 · P1 · Recebíveis e repasse ao dono** — Recebível por membro/ciclo
   (`T / C`), retido 30 dias a partir do envio do acesso (1º pagamento) ou do
@@ -116,6 +114,9 @@ notificações, conta e auditoria (V2-22 a V2-26).
   `grupos.moderacao.revisaoPendente === true` (grupo aprovado automaticamente
   e ainda não revisado); `moderacao.revisao.resultado` diz se a revisão
   confirmou ou reprovou (reprovado = grupo `cancelado`).
+  **Interface da 006 (2026-11-26)**: a 006 não lança repasse nem taxa; gerar
+  também os recebíveis das mensalidades pagas (ou liberadas da retenção) antes
+  desta feature, pela composição das faturas.
 
 - **V2-12 · P1 · Cancelamento antes do acesso com estorno integral** — Com
   `aguardandoEnvioAcesso: true`, mostrar estorno integral; confirmar retira a
@@ -125,6 +126,9 @@ notificações, conta e auditoria (V2-22 a V2-26).
   `DELETE` de membro não consulta pagamento (`pages/api/grupos/[id]/join.js:30-80`);
   o estorno é uma API separada, chamada pelo cliente
   (`pages/api/assinaturas/refund.js:21-105`). Depende de V2-06. Absorve B-02.
+  **Interface da 006 (2026-11-26)**: a caução já volta em toda saída e a
+  mensalidade volta nos grupos "após completar" não lotados; resta estornar a
+  mensalidade antes do acesso nos demais casos.
 
 - **V2-13 · P1 · Alterações sensíveis com aprovação e vigência no próximo
   ciclo** — Dono edita conteúdo não sensível direto; preço, capacidade, status
@@ -286,14 +290,16 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 
 ### Decisões a esclarecer em `sdd-specify`
 
-- Data-base do ciclo (vencimento, início, dias do ciclo e arredondamento),
-  necessária antes de V2-09, V2-10, V2-12, V2-14 e V2-15.
+- Data-base do ciclo: decidida na 006 (o ciclo mensal conta do envio do acesso;
+  mesmo dia do mês seguinte, ou o último dia). Restam dias do ciclo e
+  arredondamento do cálculo proporcional (V2-14, V2-15).
 - Como o dono "paga `T / C`" pela própria vaga (RN:397, 1074): cobrança real
   pelo Cotea ou apenas desconto do repasse? Afeta V2-03 e V2-11.
 - Destino de `vagasReservadasAdmin` e `filaEsperaAtiva` frente à regra de 1 vaga
   do dono e à fila formal (V2-03, V2-16).
-- Valor/fórmula da taxa do Mercado Pago no depósito, no saque e no checkout PIX
-  (hoje R$ 0,68 fixo na UI, `pages/assinatura/pagamento.js:48-49`).
+- Valor/fórmula da taxa do Mercado Pago no depósito, no saque e no checkout PIX.
+  A 006 zera a taxa do checkout enquanto o PIX for simulado (remove o R$ 0,68
+  fixo); o valor real é definido com o gateway.
 - Calendário de feriados para "dias úteis" (aprovação automática e saque) —
   decidir em V2-01.
 - O que "membros ativos são tratados pelo suporte" significa financeiramente
@@ -355,6 +361,7 @@ erros nesses arquivos e `npm run lint` (`eslint .`) terminando com sucesso.
 | 003-preco-por-vaga | Regra única de preço por vaga (taxa Cotea 5%) e capacidade mínima | Convergida | 38/38 tasks | 2026-11-24 |
 | 004-cadastro-financeiro | Cadastro financeiro completo sob demanda e permissões de conta | Convergida | 62/62 tasks | 2026-11-25 |
 | 005-aprovacao-grupos | Aprovação, moderação e visibilidade de grupos públicos | Convergida | 69/69 tasks | 2026-11-26 |
+| 006-checkout-caucao | Checkout v2 com caução e elegibilidade no servidor | Especificada | N/A | 2026-11-26 |
 
 ## Melhorias Ad-hoc
 
