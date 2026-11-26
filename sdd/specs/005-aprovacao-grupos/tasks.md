@@ -265,7 +265,7 @@ description: "Tasks da feature 005-aprovacao-grupos"
 - [X] Fase 5 (US3) concluída
 - [X] Fase 6 (US4) concluída
 - [X] Fase 7 (US5) concluída
-- [ ] Gate de implantação conjunta: não implantar em produção a mudança de criação (`em_aprovacao`, T009) sem as Fases 4 (fila de moderação) e 5 (rotina de aprovação automática registrada em `lib/rotinas/registro.js`) na mesma implantação; caso contrário os grupos novos ficam presos para sempre
+- [X] Gate de implantação conjunta (cumprido: PR #7, merge `67114ac` em 2026-11-26, US1-US5 no mesmo deploy): não implantar em produção a mudança de criação (`em_aprovacao`, T009) sem as Fases 4 (fila de moderação) e 5 (rotina de aprovação automática registrada em `lib/rotinas/registro.js`) na mesma implantação; caso contrário os grupos novos ficam presos para sempre
 - [X] Testes de contrato todos verdes na suíte completa (`npm run test:contrato`, incluindo 001-004) e `check-contract-tests.ps1 -Slug 005-aprovacao-grupos` íntegro
 - [X] `npm test` verde
 - [X] `npm run lint` verde
@@ -329,3 +329,20 @@ Task: "T016 [P] [US1] pages/admin/grupos/[id].js sem status no PUT"
 - Parar em qualquer checkpoint pra validar a story isoladamente
 
 <!-- sdd-converge anexa "## Phase N: Convergence" abaixo desta linha -->
+
+## Phase 9: Convergence
+
+**Purpose**: Lacunas apontadas pelo `sdd-converge` em 2026-11-26 (CRITICAL/HIGH primeiro; nesta rodada não há nenhum).
+
+- [X] T052 [US5] *(C-01, MEDIUM — origem: `data-model.md` §moderacao "só na visão completa"; FR-022; handoff "motivo só ao dono")* Em `pages/grupos/[id]/cancelar.js` (`getServerSideProps`, hoje `grupo: JSON.parse(JSON.stringify(grupo))` na linha 142), enviar ao membro só `_id`, `nome`, `descricao` e `subtitulo`, sem `moderacao` (motivo, histórico, ids de admin) nem campos internos; teste de regressão em `tests/moderacao/` chamando o `getServerSideProps` da página (padrão de `tests/bugs/ssr-grupo-detalhe-expoe-dados-internos.test.js`)
+- [X] T053 [P] *(C-02, LOW — origem: `plan: D-05` / R-008 / R-009)* Anexar nota "Atualização do execute" em `sdd/specs/005-aprovacao-grupos/logic/moderacao.md` (ação `encerrar`: `ativo` → `cancelado`, `origem: 'dono'`, texto opcional, destino `membros`) e em `sdd/specs/005-aprovacao-grupos/data-model.md` (`encerrar` na lista de `acao` do histórico; visão `aprovados` da fila)
+
+**Critério de Conclusão**: T052 com teste verde e `npx vitest run` sem regressão; T053 com os dois documentos citando `encerrar`; contratos 005 5/5 e `check-contract-tests.ps1 -Slug 005-aprovacao-grupos` íntegro; nova rodada de `sdd-converge` sem achados.
+
+**Registro da Fase**:
+
+- Status: concluída (2026-11-26); falta a nova rodada de `sdd-converge` e publicar a T052 (novo PR para a `main`).
+- Feito: T052 — SSR de `pages/grupos/[id]/cancelar.js` envia ao membro só `_id`, `nome`, `descricao` e `subtitulo`; teste `tests/moderacao/cancelar-ssr.test.js` (3 casos: props mínimas sem motivo/histórico/ids/campos internos; não membro e dono redirecionados; sem sessão vai ao login). T053 — notas "Atualização do execute" em `logic/moderacao.md` (§6) e `data-model.md`.
+- Contrato: `npm run test:contrato` → 25/25 (001-005); `check-contract-tests.ps1 -Slug 005-aprovacao-grupos` íntegro.
+- Testes executados: `npx vitest run` → 54 arquivos, 430/430. Regressão comprovada: contra a versão do HEAD, `cancelar-ssr.test.js` tem 1 de 3 falhando; com a correção, 3/3. `npx eslint` nos arquivos tocados: 0 erros.
+- Pendências: nenhuma de código. Na verificação da regressão, uma cópia mal feita (`Copy-Item -LiteralPath` virou a origem) restaurou a versão antiga do `cancelar.js`; a correção foi reaplicada e conferida pelo diff (9 linhas).

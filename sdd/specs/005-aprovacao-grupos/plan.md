@@ -242,7 +242,8 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | Contratos | 001-005: 25/25 verdes (`npm run test:contrato`); 5 travas íntegras |
 | Gates | `npm test` 427/427; `npm run lint` 0 erros (5 warnings pré-existentes); `npm run build` ok |
 | Banco (`usaComigo`) | Migração aplicada (5 grupos → aprovado/legado), reexecução 0 alterações; índice `status_1_moderacao.enviadoEm_1` criado |
-| Implantação | Nada commitado; falta só o gate de implantação conjunta (US1 com US2/US3) e reexecutar a migração após o deploy |
+| Convergência | Phase 9 concluída (T052, T053); aguardando nova rodada do `sdd-converge` |
+| Implantação | Em produção (sem a T052): commit `0bfeff2`, PR #7, merge `67114ac` (2026-11-26), deploy Vercel ok; migração reexecutada após o deploy (0 alterações) |
 ## Riscos e Decisões
 
 <!--
@@ -252,17 +253,16 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 
 | ID | Risco/Decisão | Impacto | Mitigação/Encaminhamento |
 | --- | --- | --- | --- |
-| R-001 | D-02 (status ausente = `ativo`) diverge do FR-029 ("sem status → fora do ar"). | Baixo: 0 grupos sem status no banco (2026-11-26); manter o critério evita quebrar B-04 e o teste de `get-grupo-expoe-dados-internos`. | Registrar a decisão na spec (Clarifications/FR-029) antes ou durante o execute (T046). A migração grava `ativo` explícito e lista esses grupos no relatório. |
-| R-002 | Queda entre gravar a transição e notificar/auditar perde a notificação ou a auditoria das ações manuais. | Baixo: notificação é informativa; a transição em si é atômica. | Rotina renotifica no reprocessamento (idempotente pelo `_id`). Ações manuais: aceito; auditoria via `logAudit` já é "melhor esforço" no projeto. |
-| R-003 | SSR de `pages/grupos/[id].js` envia o documento inteiro do grupo nas props (inclui `observacoesInternas`, `necessitaAnalise`, e-mails) — achado pré-existente, fora do escopo. | Médio (exposição a qualquer visitante de grupo público). | Não corrigir aqui (escopo); abrir `sdd-bugfix` separado. Esta feature só acrescenta o gate de visibilidade ao SSR e NÃO deve passar `moderacao` a terceiros (o gate já garante que só dono/membro/staff veem grupo não público). |
-| R-004 | Cancelamento pelo Cotea deixa membros pagantes sem estorno automático. | Médio operacional. | Decisão do usuário: suporte trata; notificação aos membros; V2-14/V2-15 automatizam. |
-| R-005 | Fake de Mongo travado: features futuras que precisarem de operadores novos não podem editá-lo. | Baixo. | Criar helper próprio na feature futura ou reabrir a trava via plan. |
+| R-001 | D-02 (status ausente = `ativo`) diverge do FR-029 ("sem status → fora do ar"). | Baixo: 0 grupos sem status no banco (2026-11-26); manter o critério evita quebrar B-04 e o teste de `get-grupo-expoe-dados-internos`. | Resolvido: FR-029, edge case e SC-005 da spec alinhados a D-02 (Clarification de 2026-11-26); migração validada (5 aprovados legado, 0 não classificados). Registrar a decisão na spec (Clarifications/FR-029) antes ou durante o execute (T046). A migração grava `ativo` explícito e lista esses grupos no relatório. |
+| R-002 | Queda entre gravar a transição e notificar/auditar perde a notificação ou a auditoria das ações manuais. | Baixo: notificação é informativa; a transição em si é atômica. | Resolvido: risco aceito; a rotina renotifica de forma idempotente (`rotina-revisao.test.js`) e a auditoria das ações manuais segue o padrão "melhor esforço" do projeto. Rotina renotifica no reprocessamento (idempotente pelo `_id`). Ações manuais: aceito; auditoria via `logAudit` já é "melhor esforço" no projeto. |
+| R-003 | SSR de `pages/grupos/[id].js` envia o documento inteiro do grupo nas props (inclui `observacoesInternas`, `necessitaAnalise`, e-mails) — achado pré-existente, fora do escopo. | Médio (exposição a qualquer visitante de grupo público). | Resolvido: bug `ssr-grupo-detalhe-expoe-dados-internos` (verified) e convergência C-01/T052 na página de cancelar. Não corrigir aqui (escopo); abrir `sdd-bugfix` separado. Esta feature só acrescenta o gate de visibilidade ao SSR e NÃO deve passar `moderacao` a terceiros (o gate já garante que só dono/membro/staff veem grupo não público). |
+| R-004 | Cancelamento pelo Cotea deixa membros pagantes sem estorno automático. | Médio operacional. | Resolvido: decisão do usuário mantida (o suporte trata; membros notificados, sem estorno), conferida em `cancelamento-cotea.test.js`; automação na V2-14/V2-15. Decisão do usuário: suporte trata; notificação aos membros; V2-14/V2-15 automatizam. |
+| R-005 | Fake de Mongo travado: features futuras que precisarem de operadores novos não podem editá-lo. | Baixo. | Resolvido: risco aceito e registrado; a trava só cobre `db-grupos-memoria.js`, e features futuras criam helper próprio ou reabrem a trava pelo plan. Criar helper próprio na feature futura ou reabrir a trava via plan. |
 | R-007 | **Defeito no contrato travado** (`detalhe de grupo não público…`, `tests/contract/005-aprovacao-grupos.contract.test.js:142,157`): `semearGrupo({ status: undefined, moderacao: null })` aplica o default `status = 'em_aprovacao'` do destructuring, então o "grupo legado" vira um grupo em aprovação e o teste espera 200 para anônimo — o oposto do FR-006. Achado na Fase 3 (2026-11-26). | Bloqueia o contrato: impossível ficar verde sem violar o FR-006. | Resolvido: emenda aprovada pelo usuário (2026-11-26). Só `semearGrupo` mudou (`'status' in opcoes` / `'moderacao' in opcoes`; `moderacao: null` passa a semear documento sem o campo); asserções intactas; trava regravada com `check-contract-tests.ps1 -Write`. |
 | R-008 | Conflito spec × código achado na T016: o botão "Cancelar grupo" do dono (`pages/admin/grupos/[id].js`) cancelava por `PUT` com `status: 'cancelado'`, que o FR-003 passa a ignorar; a spec também diz que o encerramento atual do dono não muda (V2-14). | Sem tratamento, o dono perderia o encerramento sem aviso. | Resolvido: decisão do usuário (2026-11-26) — ação nova `encerrar` do dono em `lib/moderacao.js` (`ativo` → `cancelado`, `origem: 'dono'`, texto opcional, notifica só os membros, sem estorno) pela rota do dono; o botão usa `desistir` em `em_aprovacao`/`ajustes`. Task T049. |
 | R-009 | `/admin/grupos` lista só os grupos do próprio staff (via `/api/meus-grupos`), sem lugar para o Cotea cancelar qualquer grupo aprovado (T040). | Baixo. | Resolvido: visão `aprovados` na fila de moderação (API e aba), com a ação `cancelar`; contrato de API atualizado. |
 | R-010 | O validador `$jsonSchema` do banco exige `fidelidade.periodoMeses` numérico: criar grupo pela API sem período de fidelidade falha com 400 "Validacao do documento falhou" (achado na T048; pré-existente, a tela sempre envia o período). O schema também está aplicado no banco, ao contrário do que diz o `CLAUDE.md` ("documentation only"). | Baixo para a 005; o `moderacao` novo passa porque o validador não tem `additionalProperties: false`. | Fora do escopo: registrar no backlog como `[Bug]` e ajustar a frase do `CLAUDE.md` em `sdd-adhoc`. |
-| R-006 | Edição concorrente com decisão: admin do sistema edita conteúdo durante `em_aprovacao` enquanto outro admin aprova; dono edita em `ajustes` enquanto desiste em outra aba. | Baixo. | Coberto por D-04/D-07: o `PUT` nunca toca `status`, e a checagem de estado do `PUT` é feita no filtro do `updateOne` (`status` lido + `$in` permitido), não só na leitura. |
-
+| R-006 | Edição concorrente com decisão: admin do sistema edita conteúdo durante `em_aprovacao` enquanto outro admin aprova; dono edita em `ajustes` enquanto desiste em outra aba. | Baixo. | Resolvido: `PUT` e `DELETE` filtram pelo `status` lido e o `PUT` não toca `status` (`handlers-grupo.test.js`). Coberto por D-04/D-07: o `PUT` nunca toca `status`, e a checagem de estado do `PUT` é feita no filtro do `updateOne` (`status` lido + `$in` permitido), não só na leitura. |
 ## Execution Notes
 
 <!--
@@ -282,8 +282,10 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 | 2026-11-26 | Fase 7 (US5) | Cancelar pelo Cotea na fila (visão nova Aprovados), estado na lista do admin; 127/127 em tests/moderacao | — |
 | 2026-11-26 | Fase 8 (Polish) | RN (18 trocas, sem suspensão), CLAUDE.md, backlog (V2-11/14/15); migração aplicada e índice criado no banco com autorização do usuário; gates lint/test/build verdes | T048 no navegador |
 | 2026-11-26 | T048 (quickstart) | Passos 1-9 no navegador via Playwright (admin = dono); 2 bugs de UI corrigidos (T050 corrida na fila, T051 reenvio do dono-admin); banco limpo (5 grupos, 5 membros, 7 notificações, 16 auditorias, 2 itens de rotina apagados) | Gate de implantação conjunta |
+| 2026-11-26 | Deploy | Commit `0bfeff2`; PR #7 (inclui 004 e correções B-01..B-09) com preview ok; merge `67114ac`; deploy de produção ok; migração pós-deploy 0 alterações; produção: listagem 5 grupos, rotinas 401 sem segredo, fila 307 para login, detalhe sem campos internos | `sdd-converge` |
+| 2026-11-26 | Phase 9 (Convergence) | T052: SSR do cancelar sem `moderacao` nem campos internos (C-01), com teste de regressão; T053: docs de design citam `encerrar`/`aprovados`; 430/430, contratos 25/25 | Nova rodada de `sdd-converge`; publicar a T052 |
 
-**PRÓXIMO**: commit; implantar US1-US5 juntas (gate da Phase 8); reexecutar `scripts/migrar-moderacao-grupos.js --aplicar` após o deploy; depois `sdd-converge 005-aprovacao-grupos`.
+**PRÓXIMO**: `sdd-converge 005-aprovacao-grupos`; depois commit + PR para publicar a T052.
 
 ## Arquivos Principais
 
@@ -301,3 +303,38 @@ Stubs criados pelo plan (ponto de partida do execute, não travados):
 - `lib/moderacao.js` importa `./calendario.js` com extensão porque o script de migração (Node ESM, sem `"type"` no package.json) o importa direto; não remova a extensão.
 - O `PUT /api/grupos/[id]` exige ser dono/admin do grupo mesmo para admin do sistema (regra pré-existente); testes de admin precisam do admin como dono.
 - A `visao` da SSR do detalhe ficou `{ jaMembro, souAdmin }` por causa do teste do bug `ssr-grupo-…`; o estado de moderação vai na prop `estadoGrupo`.
+
+## Resultado Final
+
+Convergido em 2026-11-26 (segunda rodada do `sdd-converge`, sem achados).
+
+**Construído**
+
+- `grupos.status` como estado de moderação (`em_aprovacao`, `ajustes`, `rejeitado`, `ativo`, `cancelado`; ausente = `ativo` legado), subdocumento `moderacao` (envio, prazo, revisão pendente, aprovação, revisão, última decisão, cancelamento, histórico limitado a 100) e índice `{ status, moderacao.enviadoEm }`.
+- Núcleo puro `lib/moderacao.js` (tabela de transições, texto, visibilidade, prazo e migração) e `lib/moderacao-servidor.js` (`findOneAndUpdate` condicional, notificação idempotente por `_id` determinístico, auditoria `grupo.moderacao.<acao>`).
+- Criação sempre em aprovação; status nunca vem do cliente; listagem, home e detalhe (API e SSR) só com grupos públicos; não público só para dono, membro atual e staff.
+- Fila no `/admin` (aba "Moderação" com contador; visões em aprovação, revisão posterior e aprovados); decisões só do admin do sistema.
+- Rotina `aprovacao-automatica-grupos` (fim do 2º dia útil após o envio, calendário da 001), registrada e em produção.
+- Ações do dono (reenviar, desistir, encerrar), banner no detalhe, estado e motivo em Meus Grupos, edição em ajustes com "Salvar e reenviar".
+- Migração `scripts/migrar-moderacao-grupos.js` aplicada e reexecutada após o deploy (5 grupos → aprovado legado).
+- Testes: 5 contratos travados (25/25 com 001-004) e 135 testes em `tests/moderacao`; suíte completa 430/430; quickstart validado no navegador.
+
+**Desvios em relação ao plano original**
+
+- R-007: contrato do detalhe emendado (só a preparação dos dados), com aprovação do usuário.
+- R-008: ação nova `encerrar` do dono, para manter o botão "Cancelar grupo" sem aceitar `status` no `PUT`.
+- R-009: visão `aprovados` na fila para o cancelamento pelo Cotea, porque `/admin/grupos` só lista os grupos do próprio staff.
+- T050/T051 (achados no quickstart): corrida entre respostas na `ModeracaoTab`; reenvio pelo dono que também é admin do sistema.
+- Convergência C-01/T052: a SSR de `/grupos/[id]/cancelar` deixou de enviar o documento inteiro ao membro. C-02/T053: docs de design atualizados.
+- Fora do plano, mas no mesmo arquivo: a API do detalhe passou a usar `identificarVisaoGrupo` (do bugfix `ssr-grupo-…`), e o `adminNome` público deixou de cair no e-mail; o dono pode editar subtítulo e descrição em ajustes.
+
+**Decisões técnicas diferentes do plano**
+
+- Prazo calculado com `vencimentoDiasUteis` (fim do dia útil), por decisão do usuário no plan; a spec foi corrigida.
+- `lib/moderacao.js` importa `./calendario.js` com extensão, para o script de migração em Node ESM.
+- O `DELETE` restrito a grupos `ativo` foi implementado na Fase 3 (previsto para a T032).
+- A SSR do detalhe expõe o estado de moderação numa prop nova (`estadoGrupo`), porque a prop `visao` foi fixada pelo teste do bugfix.
+
+**Em aberto (fora do escopo da feature)**
+
+- R-010: validador `$jsonSchema` aplicado no banco exige `fidelidade.periodoMeses` numérico, e o `CLAUDE.md` diz que os schemas são só documentação; aguardando decisão do usuário (backlog ou `sdd-adhoc`).
